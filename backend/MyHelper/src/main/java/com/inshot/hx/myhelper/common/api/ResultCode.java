@@ -12,7 +12,8 @@ public enum ResultCode {
     NOT_FOUND(40400, "请求的资源不存在", HttpStatus.NOT_FOUND),
     METHOD_NOT_ALLOWED(40500, "不支持该请求方法", HttpStatus.METHOD_NOT_ALLOWED),
     CONFLICT(40900, "资源状态冲突", HttpStatus.CONFLICT),
-    INTERNAL_SERVER_ERROR(50000, "服务异常，请稍后重试", HttpStatus.INTERNAL_SERVER_ERROR);
+    INTERNAL_SERVER_ERROR(50000, "服务异常，请稍后重试", HttpStatus.INTERNAL_SERVER_ERROR),
+    AI_UNAVAILABLE(50200, "大模型服务暂不可用", HttpStatus.BAD_GATEWAY);
 
     private final int code;
     private final String message;

@@ -33,11 +33,20 @@ server:
 spring:
   config:
     import: "optional:file:./.env[.properties]"
+  # 接入消息持久化时移除此排除项并配置数据源。
+  autoconfigure:
+    exclude: org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration
   ai:
+    model:
+      embedding: none
+      image: none
+      audio:
+        speech: none
+        transcription: none
     openai:
       api-key: ${AI_API_KEY}
       base-url: ${AI_BASE_URL}
+      timeout: 60s
+      max-retries: 0
       chat:
-        completions-path: /chat/completions
-        options:
-          model: ${AI_MODEL}
+        model: ${AI_MODEL}

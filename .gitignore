@@ -47,3 +47,5 @@ coverage/
 *.iml
 
 .env
+
+.vscode/
