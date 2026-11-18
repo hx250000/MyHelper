@@ -1,0 +1,43 @@
+# spring:
+#   datasource:
+#     url: 
+#     username: 
+#     password: 
+
+  # jpa:
+  #   hibernate:
+  #     ddl-auto: update
+  #   show-sql: false
+
+  # servlet:
+  #   multipart:
+  #     enabled: true
+  #     max-file-size: 4MB      # 单个文件最大限制
+  #     max-request-size: 10MB   # 单次请求总大小限制
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+    prometheus:
+      enabled: true
+
+server:
+  port: 8080
+  forward-headers-strategy: framework
+
+spring:
+  config:
+    import: "optional:file:./.env[.properties]"
+  ai:
+    openai:
+      api-key: ${AI_API_KEY}
+      base-url: ${AI_BASE_URL}
+      chat:
+        completions-path: /chat/completions
+        options:
+          model: ${AI_MODEL}
