@@ -49,3 +49,6 @@ coverage/
 .env
 
 .vscode/
+
+# else
+docs/addition/

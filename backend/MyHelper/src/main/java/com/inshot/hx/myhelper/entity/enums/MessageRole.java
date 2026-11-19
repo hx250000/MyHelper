@@ -1,0 +1,27 @@
+package com.inshot.hx.myhelper.entity.enums;
+
+public enum MessageRole {
+    USER("user"),
+    ASSISTANT("assistant"),
+    SYSTEM("system"),
+    TOOL("tool");
+
+    private final String value;
+
+    MessageRole(String value) {
+        this.value = value;
+    }
+
+    public String getValue() {
+        return value;
+    }
+
+    public static MessageRole fromValue(String value) {
+        for (MessageRole role : values()) {
+            if (role.value.equals(value)) {
+                return role;
+            }
+        }
+        throw new IllegalArgumentException("未知的消息角色：" + value);
+    }
+}

@@ -1,41 +1,26 @@
 # spring:
-#   datasource:
-#     url: 
-#     username: 
-#     password: 
-
-  # jpa:
-  #   hibernate:
-  #     ddl-auto: update
-  #   show-sql: false
-
-  # servlet:
-  #   multipart:
-  #     enabled: true
-  #     max-file-size: 4MB      # 单个文件最大限制
-  #     max-request-size: 10MB   # 单次请求总大小限制
-
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health,info,metrics,prometheus
-  endpoint:
-    health:
-      show-details: always
-    prometheus:
-      enabled: true
-
 server:
   port: 8080
   forward-headers-strategy: framework
 
 spring:
+  datasource:
+      url: ${DB_URL}
+      username: ${DB_USERNAME}
+      password: ${DB_PASSWORD}
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+
+# servlet:
+#   multipart:
+#     enabled: true
+#     max-file-size: 4MB      # 单个文件最大限制
+#     max-request-size: 10MB   # 单次请求总大小限制
   config:
     import: "optional:file:./.env[.properties]"
-  # 接入消息持久化时移除此排除项并配置数据源。
-  autoconfigure:
-    exclude: org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration
   ai:
     model:
       embedding: none
@@ -50,3 +35,14 @@ spring:
       max-retries: 0
       chat:
         model: ${AI_MODEL}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+    prometheus:
+      enabled: true
