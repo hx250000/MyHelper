@@ -113,7 +113,7 @@ erDiagram
     AI_GENERATION ||--o{ AI_MODEL_CALL : invokes
 
     USER {
-        BIGINT id PK
+        VARCHAR id PK
         VARCHAR username
         DATETIME created_at
     }
@@ -173,13 +173,13 @@ erDiagram
 |---|---|---|---|
 | id | VARCHAR(16) | PK | 用户 ID |
 | username | VARCHAR(64) | NOT NULL, UNIQUE | 用户名 |
-| password_hash | VARCHAR(255) | | 密码哈希，认证模块启用后使用 |
+| password_hash | VARCHAR(255) | | 注册时保存 BCrypt 密码哈希；兼容已有无密码用户 |
 | created_at | DATETIME | NOT NULL | 创建时间 |
 | updated_at | DATETIME | NOT NULL | 更新时间 |
 
 设计说明：
 
-1. 使用 BIGINT 作为主键，预留足够的用户数量空间。
+1. 用户主键使用 VARCHAR(16)，注册时由服务端生成 16 位随机字符串；会话表 user_id 使用相同类型。
 2. 用户名建立唯一索引，避免重复注册。
 3. 密码只保存哈希结果，不保存明文。
 4. 第一阶段如果暂时只有个人使用，也建议保留用户表和 `user_id` 关联，避免后续多用户扩展时大规模修改数据结构。

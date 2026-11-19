@@ -2,19 +2,20 @@
 后端Java, SpringAI
 前端vue
 数据库mysql
-# 功能模块
+# 功能模块及接口设计
 ## 用户管理
+- 创建用户 /api/user/register
+- 用户登录 /api/user/login
 ## 会话记录
-- 创建会话
-- 获取会话列表
-- 查询会话
-- 删除会话
+- 创建会话 /api/conversation/new
+- 获取用户会话列表 /api/conversation/my
+- 删除会话 /api/conversation/delete
 ## 消息管理
 角色：{user:用户,assistant:AI}
-- 消息发送
-- 接收回答
-- 消息存储
-- 历史消息查询
+- 消息发送 /api/message/send
+- 接收回答 /api/message/receive
+- 消息存储 
+- 历史消息查询 /api/message/history
 1会话 - n消息
 1条消息对应1条AI回复，回复完成才能发送下一条消息
 保存消息处理状态
@@ -38,3 +39,19 @@ Entity（数据库实体）
 
 # 执行流程
 用户->创建会话->发送消息->调用模型
+
+# 接口设计
+## 用户管理
+- 创建用户 /api/user/register
+- 用户登录 /api/user/login
+## 会话记录
+- 创建会话 /api/conversation/new
+- 获取用户会话列表 /api/conversation/my
+- 删除会话 /api/conversation/delete
+## 消息管理
+角色：{user:用户,assistant:AI}
+- 消息发送 /api/message/send
+- 接收回答 /api/message/receive
+- 历史消息查询 /api/message/history
+## AI服务模块
+- 大模型调用 /api/ai/chat

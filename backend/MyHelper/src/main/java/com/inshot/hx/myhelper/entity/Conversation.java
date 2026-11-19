@@ -37,7 +37,7 @@ public class Conversation extends BaseTimeEntity {
 
     @Setter
     @Column(name = "title", length = 255)
-    private String title = "新会话";
+    private String title = "新对话";
 
     @Setter
     @Column(name = "model_name", length = 100)
@@ -50,5 +50,10 @@ public class Conversation extends BaseTimeEntity {
 
     public Conversation(User user) {
         this.user = Objects.requireNonNull(user, "所属用户不能为空");
+    }
+
+    /** 消息新增也属于会话活动；仅新增子实体不会触发会话的 PreUpdate。 */
+    public void markMessageActivity() {
+        updateTimestamp();
     }
 }

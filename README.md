@@ -8,6 +8,8 @@
 
 已实现最小后端大模型接口：接收一条消息 → Spring AI 调用 Gemini → 返回文本。当前为单轮、非流式问答，不保存历史、不依赖数据库，前端保持原状。
 
+已实现后端用户注册接口 `POST /api/users/register`：按用户表保存唯一用户名、BCrypt 密码哈希和服务端生成的 16 位用户 ID；暂不实现登录或前端页面。请求示例、校验规则和测试见 [用户注册说明](backend/MyHelper/docs/user-registration.md)。应用当前启动需要配置 MySQL 数据源。
+
 启动、密钥配置和接口示例见 [大模型交互说明](backend/MyHelper/docs/ai-chat.md)。实际后端工程位于 `backend/MyHelper`，前端工程位于 `frontend/MyHelper`；下方目录与模块约定保留为后续功能规划。
 
 ## 目录结构

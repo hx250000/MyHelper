@@ -3,23 +3,31 @@ package com.inshot.hx.myhelper.entity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
+import jakarta.persistence.PostLoad;
+import jakarta.persistence.PostPersist;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 import jakarta.persistence.UniqueConstraint;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.springframework.data.domain.Persistable;
 
 import java.util.Objects;
 
-/** 暂只承载会话归属，不实现认证；ID 由调用方提供，最长 16 字符。 */
+/** 用户资料及会话归属；注册时由服务端生成最长 16 字符的 ID，不实现登录。 */
 @Getter
 @Entity
 @Table(name = "`user`", uniqueConstraints = {
         @UniqueConstraint(name = "uk_user_username", columnNames = "username")
 })
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class User extends BaseTimeEntity {
+public class User extends BaseTimeEntity implements Persistable<String> {
+
+    // ID 由业务代码预先分配，不能仅凭 ID 非空就让 save 走 merge。
+    @Transient
+    private boolean newEntity = true;
 
     @Id
     @Column(name = "id", length = 16, nullable = false, updatable = false)
@@ -39,5 +47,16 @@ public class User extends BaseTimeEntity {
         }
         this.id = id;
         this.username = Objects.requireNonNull(username, "用户名不能为空");
+    }
+
+    @Override
+    public boolean isNew() {
+        return newEntity;
+    }
+
+    @PostPersist
+    @PostLoad
+    private void markNotNew() {
+        newEntity = false;
     }
 }

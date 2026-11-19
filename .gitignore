@@ -51,4 +51,5 @@ coverage/
 .vscode/
 
 # else
-docs/addition/
+backend/MyHelper/docs/addition
+postman/
