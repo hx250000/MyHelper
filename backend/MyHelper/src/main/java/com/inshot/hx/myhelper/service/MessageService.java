@@ -10,13 +10,17 @@ import com.inshot.hx.myhelper.entity.enums.MessageRole;
 import com.inshot.hx.myhelper.entity.enums.MessageStatus;
 import com.inshot.hx.myhelper.repository.ConversationRepository;
 import com.inshot.hx.myhelper.repository.MessageRepository;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @Service
 public class MessageService {
+
+    private static final long MAX_MODEL_HISTORY_ROUNDS = 100;
 
     private final MessageRepository messageRepository;
     private final ConversationRepository conversationRepository;
@@ -27,9 +31,53 @@ public class MessageService {
         this.conversationRepository = conversationRepository;
     }
 
+    /**
+     * 一次读取本次用户消息之前最近 200 条原始消息，在内存中选取完整问答。
+     * 返回最近 maxRounds 轮，按 sequence 升序排列；不足时直接返回，不继续补查。
+     * maxRounds 为轮数（1～100），每轮两条，空白内容和未完成轮次均不进入上下文。
+     * 当前数据模型没有问答关联 ID，只能按相邻消息配对，调用方必须保证同会话串行发送。
+     */
+    @Transactional(readOnly = true)
+    public List<MessageResponse> getModelHistory(String userId, long conversationId,
+                                                long beforeSequence, long maxRounds) {
+        validateConversationReference(userId, conversationId);
+        if (beforeSequence < 1) {
+            throw new BusinessException(ResultCode.BAD_REQUEST, "历史消息截止序号必须为正整数");
+        }
+        if (maxRounds < 1 || maxRounds > MAX_MODEL_HISTORY_ROUNDS) {
+            throw new BusinessException(ResultCode.BAD_REQUEST, "历史轮数必须为 1 到 100");
+        }
+        var conversation = conversationRepository.findById(conversationId)
+                .orElseThrow(() -> new BusinessException(ResultCode.NOT_FOUND, "会话不存在"));
+        checkConversationAccess(conversation, userId);
+
+        var messages = messageRepository.findByConversation_IdAndSequenceLessThanOrderBySequenceDesc(
+                conversationId, beforeSequence, PageRequest.of(0, (int) MAX_MODEL_HISTORY_ROUNDS * 2));
+        var ordered = messages.reversed();
+        var history = new ArrayList<MessageResponse>();
+        for (int i = 0; i + 1 < ordered.size(); i++) {
+            var userMessage = ordered.get(i);
+            var assistantMessage = ordered.get(i + 1);
+            // 必须在原始序列中相邻，不能先删除失败消息再配对。
+            if (isCompletedMessage(userMessage, MessageRole.USER)
+                    && isCompletedMessage(assistantMessage, MessageRole.ASSISTANT)) {
+                history.add(MessageResponse.from(userMessage));
+                history.add(MessageResponse.from(assistantMessage));
+            }
+        }
+        int start = Math.max(0, history.size() - (int) maxRounds * 2);
+        return List.copyOf(history.subList(start, history.size()));
+    }
+
+    private boolean isCompletedMessage(Message message, MessageRole role) {
+        return message.getRole() == role
+                && message.getStatus() == MessageStatus.COMPLETED
+                && !message.getContent().isBlank();
+    }
+
     /** 查询用于前端展示的完整历史，保留每条消息的实际状态。 */
     @Transactional(readOnly = true)
-    public List<MessageResponse> getHistory(String userId, Long conversationId) {
+    public List<MessageResponse> getHistoryForUser(String userId, Long conversationId) {
         validateConversationReference(userId, conversationId);
         var conversation = conversationRepository.findById(conversationId)
                 .orElseThrow(() -> new BusinessException(ResultCode.NOT_FOUND, "会话不存在"));
@@ -40,18 +88,23 @@ public class MessageService {
                 .toList();
     }
 
-    /** 仅入库，不调用模型，也不创建生成任务。 */
+    /** 兼容独立保存请求；内部聊天流程直接传入保存所需参数。 */
     @Transactional
     public MessageResponse saveUserMessage(SaveMessageRequest request) {
         if (request == null) {
             throw new BusinessException(ResultCode.BAD_REQUEST, "请求不能为空");
         }
-        validateContent(request.getContent());
-        if (request.getContent().length() > 10000) {
+        return saveUserMessage(request.getUserId(), request.getConversationId(), request.getContent());
+    }
+
+    /** 仅入库，不调用模型，也不创建生成任务。 */
+    @Transactional
+    public MessageResponse saveUserMessage(String userId, Long conversationId, String content) {
+        validateContent(content);
+        if (content.length() > 10000) {
             throw new BusinessException(ResultCode.BAD_REQUEST, "消息不能超过 10000 个字符");
         }
-        return saveCompletedMessage(request.getUserId(), request.getConversationId(),
-                request.getContent(), MessageRole.USER, null, null);
+        return saveCompletedMessage(userId, conversationId, content, MessageRole.USER, null, null);
     }
 
     /** 保存 AI 消息，不调用模型；角色固定为 assistant。 */

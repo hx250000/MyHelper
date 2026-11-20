@@ -183,9 +183,9 @@ class MessageHistoryTest {
         mvc.perform(get("/api/messages/history").param("userId", "user-1"))
                 .andExpect(status().isBadRequest());
         BusinessException invalidUser = assertThrows(BusinessException.class,
-                () -> messageService.getHistory(null, conversation.getId()));
+                () -> messageService.getHistoryForUser(null, conversation.getId()));
         BusinessException invalidConversation = assertThrows(BusinessException.class,
-                () -> messageService.getHistory("user-1", null));
+                () -> messageService.getHistoryForUser("user-1", null));
         assertEquals(ResultCode.BAD_REQUEST, invalidUser.getResultCode());
         assertEquals(ResultCode.BAD_REQUEST, invalidConversation.getResultCode());
     }
@@ -194,7 +194,7 @@ class MessageHistoryTest {
     void doesNotModifyMessagesOrConversationActivityWhenReading() {
         save(conversation, MessageRole.USER, 1, "已有消息", MessageStatus.COMPLETED);
         var before = conversationRepository.findById(conversation.getId()).orElseThrow().getUpdatedAt();
-        var history = messageService.getHistory("user-1", conversation.getId());
+        var history = messageService.getHistoryForUser("user-1", conversation.getId());
         assertEquals(1, history.size());
         assertEquals(1, messageRepository.count());
         assertEquals(before, conversationRepository.findById(conversation.getId()).orElseThrow().getUpdatedAt());

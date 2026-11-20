@@ -222,9 +222,9 @@ class MessagePersistenceTest {
 
     @Test
     void savesAssistantReplyInternallyAndAllocatesSequencesAcrossRoles() {
-        var userMessage = messageService.saveUserMessage(request("user-1", conversationId, "你好"));
+        var userMessage = messageService.saveUserMessage("user-1", conversationId, "你好");
         var reply = messageService.saveAssistantMessage("user-1", conversationId, "你好！", "test-model", 8);
-        var nextMessage = messageService.saveUserMessage(request("user-1", conversationId, "继续"));
+        var nextMessage = messageService.saveUserMessage("user-1", conversationId, "继续");
 
         assertEquals(1L, userMessage.sequence());
         assertEquals(2L, reply.sequence());
@@ -245,7 +245,7 @@ class MessagePersistenceTest {
 
     @Test
     void acceptsUserMessageAtLengthLimitAndLongerAssistantReply() {
-        var userMessage = messageService.saveUserMessage(request("user-1", conversationId, "x".repeat(10000)));
+        var userMessage = messageService.saveUserMessage("user-1", conversationId, "x".repeat(10000));
         var reply = messageService.saveAssistantMessage("user-1", conversationId, "答".repeat(12000), null, null);
         assertEquals(10000, userMessage.content().length());
         assertEquals(12000, messageRepository.findById(reply.id()).orElseThrow().getContent().length());
@@ -332,6 +332,15 @@ class MessagePersistenceTest {
                     .andExpect(jsonPath("$.code").value(40000));
         }
         assertThrows(BusinessException.class, () -> messageService.saveUserMessage(null));
+        assertEquals(0, messageRepository.count());
+    }
+
+    @Test
+    void rejectsInvalidUserContentWhenSavingWithParameters() {
+        for (String content : new String[]{null, "", "  ", "x".repeat(10001)}) {
+            assertThrows(BusinessException.class,
+                    () -> messageService.saveUserMessage("user-1", conversationId, content));
+        }
         assertEquals(0, messageRepository.count());
     }
 

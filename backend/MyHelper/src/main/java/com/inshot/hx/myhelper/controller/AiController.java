@@ -3,6 +3,7 @@ package com.inshot.hx.myhelper.controller;
 import com.inshot.hx.myhelper.common.api.ApiResponse;
 import com.inshot.hx.myhelper.dto.request.AiRequest;
 import com.inshot.hx.myhelper.dto.response.AiResponse;
+import com.inshot.hx.myhelper.dto.response.MessageResponse;
 import com.inshot.hx.myhelper.service.AiService;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -10,6 +11,9 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
+
+//Ai单独测试接口
 @RestController
 @RequestMapping("/api/ai")
 public class AiController {
@@ -20,10 +24,11 @@ public class AiController {
         this.aiService = aiService;
     }
 
-    @PostMapping(value = "/chat", consumes = MediaType.APPLICATION_JSON_VALUE,
+    //AI测试用接口，实际在chatController
+    @PostMapping(value = "/chat/nomemory", consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
     public ApiResponse<AiResponse> chat(@RequestBody AiRequest request) {
-        var response = aiService.chat(request.message());
-        return ApiResponse.success(AiResponse.from(response));
+        return ApiResponse.success(aiService.chat_no_history(request.message()));
     }
+
 }

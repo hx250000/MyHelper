@@ -1,7 +1,6 @@
 package com.inshot.hx.myhelper.entity;
 
 import com.inshot.hx.myhelper.entity.converter.MessageRoleConverter;
-import com.inshot.hx.myhelper.entity.enums.GenerationStatus;
 import com.inshot.hx.myhelper.entity.enums.MessageRole;
 import com.inshot.hx.myhelper.entity.enums.MessageStatus;
 import jakarta.persistence.EntityManager;
@@ -36,35 +35,31 @@ class EntityMappingTest {
     private EntityManager entityManager;
 
     @Test
-    void persistsConversationMessagesAndGenerationWithLazyRelationships() {
+    void persistsConversationMessagesWithLazyRelationships() {
         Conversation conversation = persistConversation();
         Message question = new Message(conversation, MessageRole.USER, 1, "你好");
         Message reply = new Message(conversation, MessageRole.ASSISTANT, 2, "");
         entityManager.persist(question);
         entityManager.persist(reply);
-        AiGeneration generation = new AiGeneration(reply);
-        entityManager.persist(generation);
         entityManager.flush();
 
         assertNotNull(conversation.getId());
         assertNotNull(question.getId());
-        assertNotNull(generation.getId());
-        assertNotNull(generation.getCreatedAt());
+        assertNotNull(reply.getId());
+        assertNotNull(reply.getCreatedAt());
         assertEquals(MessageStatus.COMPLETED, question.getStatus());
         assertEquals(MessageStatus.PENDING, reply.getStatus());
-        assertEquals(GenerationStatus.PENDING, generation.getStatus());
         assertFalse(conversation.isDeleted());
         assertNull(conversation.getUser().getPasswordHash());
         entityManager.clear();
 
-        AiGeneration loaded = entityManager.find(AiGeneration.class, generation.getId());
+        Message loaded = entityManager.find(Message.class, reply.getId());
         assertFalse(entityManager.getEntityManagerFactory().getPersistenceUnitUtil()
-                .isLoaded(loaded, "assistantMessage"));
+                .isLoaded(loaded, "conversation"));
         assertEquals(conversation.getId(), loaded.getConversation().getId());
-        assertEquals(reply.getId(), loaded.getAssistantMessage().getId());
-        assertEquals("", loaded.getAssistantMessage().getContent());
+        assertEquals("", loaded.getContent());
         assertEquals("local-user", loaded.getConversation().getUser().getId());
-        assertNotNull(loaded.getAssistantMessage().getCreatedAt());
+        assertNotNull(loaded.getCreatedAt());
     }
 
     @ParameterizedTest
@@ -105,28 +100,6 @@ class EntityMappingTest {
             assertEquals(123, loaded.getTokenCount());
             conversation = entityManager.find(Conversation.class, conversation.getId());
         }
-    }
-
-    @ParameterizedTest
-    @EnumSource(GenerationStatus.class)
-    void persistsGenerationStateAndExecutionDetails(GenerationStatus status) {
-        Message reply = new Message(persistConversation(), MessageRole.ASSISTANT, 1, "");
-        entityManager.persist(reply);
-        AiGeneration generation = new AiGeneration(reply);
-        LocalDateTime started = LocalDateTime.of(2026, 11, 19, 10, 0);
-        generation.setStatus(status);
-        generation.setStartedAt(started);
-        generation.setFinishedAt(started.plusSeconds(5));
-        generation.setErrorMessage("仅供服务端使用的错误摘要");
-        entityManager.persist(generation);
-        entityManager.flush();
-        entityManager.clear();
-
-        AiGeneration loaded = entityManager.find(AiGeneration.class, generation.getId());
-        assertEquals(status, loaded.getStatus());
-        assertEquals(started, loaded.getStartedAt());
-        assertEquals(started.plusSeconds(5), loaded.getFinishedAt());
-        assertEquals("仅供服务端使用的错误摘要", loaded.getErrorMessage());
     }
 
     @Test
@@ -178,18 +151,6 @@ class EntityMappingTest {
     }
 
     @Test
-    void rejectsMultipleGenerationsForOneReply() {
-        Message reply = new Message(persistConversation(), MessageRole.ASSISTANT, 1, "");
-        entityManager.persist(reply);
-        entityManager.persist(new AiGeneration(reply));
-        entityManager.flush();
-        assertThrows(PersistenceException.class, () -> {
-            entityManager.persist(new AiGeneration(reply));
-            entityManager.flush();
-        });
-    }
-
-    @Test
     void rejectsDuplicateUsername() {
         persistConversation();
         assertThrows(PersistenceException.class, () -> {
@@ -227,8 +188,6 @@ class EntityMappingTest {
         assertThrows(IllegalArgumentException.class, () -> new User(" ", "local"));
         assertThrows(IllegalArgumentException.class,
                 () -> new Message(conversation, MessageRole.USER, 0, "内容"));
-        assertThrows(IllegalArgumentException.class,
-                () -> new AiGeneration(new Message(conversation, MessageRole.USER, 1, "内容")));
         assertThrows(NullPointerException.class, () -> new Conversation(null));
         assertThrows(NullPointerException.class,
                 () -> new Message(conversation, MessageRole.USER, 1, null));

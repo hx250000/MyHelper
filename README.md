@@ -6,7 +6,9 @@
 - 前端：Vue。
 - 数据库：MySQL。
 
-已实现最小后端大模型接口：接收一条消息 → Spring AI 调用 Gemini → 返回文本。当前为单轮、非流式问答，不保存历史、不依赖数据库，前端保持原状。
+已实现后端单轮大模型接口 `POST /api/ai/chat`：接收一条消息 → Spring AI 调用 Gemini → 返回文本，该调试接口不保存消息。
+
+已实现同步发送接口 `POST /api/messages/send`：保存用户消息 → 事务外调用现有 `AiService` → 保存 AI 回复并返回本轮两条消息。当前仅实现基本单轮、非流式对话，不向模型发送历史上下文，前端保持原状。调用示例与失败行为见 [单轮对话说明](backend/MyHelper/docs/single-turn-chat.md)。
 
 已实现后端用户注册接口 `POST /api/users/register`：按用户表保存唯一用户名、BCrypt 密码哈希和服务端生成的 16 位用户 ID；暂不实现登录或前端页面。请求示例、校验规则和测试见 [用户注册说明](backend/MyHelper/docs/user-registration.md)。应用当前启动需要配置 MySQL 数据源。
 

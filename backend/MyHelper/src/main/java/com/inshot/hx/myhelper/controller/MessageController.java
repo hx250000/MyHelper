@@ -27,25 +27,26 @@ public class MessageController {
         this.messageService = messageService;
     }
 
+    /** 用户获取对话历史消息 */
     @GetMapping(value = "/history", produces = MediaType.APPLICATION_JSON_VALUE)
     public ApiResponse<List<MessageResponse>> getHistory(@RequestParam String userId,
                                                         @RequestParam Long conversationId) {
-        return ApiResponse.success(messageService.getHistory(userId, conversationId));
+        return ApiResponse.success(messageService.getHistoryForUser(userId, conversationId));
     }
 
-    @PostMapping(value = "/user", consumes = MediaType.APPLICATION_JSON_VALUE,
-            produces = MediaType.APPLICATION_JSON_VALUE)
-    @ResponseStatus(HttpStatus.CREATED)
-    public ApiResponse<MessageResponse> saveUserMessage(@RequestBody SaveMessageRequest request) {
-        return ApiResponse.success(messageService.saveUserMessage(request));
-    }
+//    @PostMapping(value = "/user", consumes = MediaType.APPLICATION_JSON_VALUE,
+//            produces = MediaType.APPLICATION_JSON_VALUE)
+//    @ResponseStatus(HttpStatus.CREATED)
+//    public ApiResponse<MessageResponse> saveUserMessage(@RequestBody SaveMessageRequest request) {
+//        return ApiResponse.success(messageService.saveUserMessage(request));
+//    }
 
-    @PostMapping(value = "/assistant", consumes = MediaType.APPLICATION_JSON_VALUE,
-            produces = MediaType.APPLICATION_JSON_VALUE)
-    @ResponseStatus(HttpStatus.CREATED)
-    public ApiResponse<MessageResponse> saveAssistantMessage(@RequestBody SaveAssistantMessageRequest request) {
-        return ApiResponse.success(messageService.saveAssistantMessage(request.getUserId(),
-                request.getConversationId(), request.getContent(), request.getModelName(), request.getTokenCount()));
-    }
+//    @PostMapping(value = "/assistant", consumes = MediaType.APPLICATION_JSON_VALUE,
+//            produces = MediaType.APPLICATION_JSON_VALUE)
+//    @ResponseStatus(HttpStatus.CREATED)
+//    public ApiResponse<MessageResponse> saveAssistantMessage(@RequestBody SaveAssistantMessageRequest request) {
+//        return ApiResponse.success(messageService.saveAssistantMessage(request.getUserId(),
+//                request.getConversationId(), request.getContent(), request.getModelName(), request.getTokenCount()));
+//    }
 }
 
