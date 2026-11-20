@@ -6,6 +6,8 @@
 - 前端：Vue。
 - 数据库：MySQL。
 
+前端已提供简易交互工作台：会话管理、历史消息、同步 AI 聊天、用户注册与用户 ID 联调，以及无需后端的本地演示。运行 `cd frontend/MyHelper && npm install && npm run dev` 即可预览，完整说明见 [前端使用说明](frontend/MyHelper/README.md)。聊天入口使用当前 Controller 的 `POST /api/chat/send`；下方旧阶段说明中的消息路径与“前端保持原状”已不再适用于当前前端。后端尚无登录鉴权与删除会话接口。
+
 已实现后端单轮大模型接口 `POST /api/ai/chat`：接收一条消息 → Spring AI 调用 Gemini → 返回文本，该调试接口不保存消息。
 
 已实现同步发送接口 `POST /api/messages/send`：保存用户消息 → 事务外调用现有 `AiService` → 保存 AI 回复并返回本轮两条消息。当前仅实现基本单轮、非流式对话，不向模型发送历史上下文，前端保持原状。调用示例与失败行为见 [单轮对话说明](backend/MyHelper/docs/single-turn-chat.md)。
