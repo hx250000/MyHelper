@@ -18,6 +18,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.context.annotation.Import;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
@@ -35,16 +36,12 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
-import static org.hamcrest.Matchers.containsString;
-import static org.hamcrest.Matchers.not;
-import static org.hamcrest.Matchers.nullValue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /** 实际提交事务，使用 H2 验证消息落库、关联隔离与并发序号；不调用真实 AI/MySQL。 */
@@ -90,27 +87,13 @@ class MessagePersistenceTest {
     }
 
     @Test
-    void savesUserMessageAndReturnsDtoWithoutTrustingClientMetadata() throws Exception {
-        mvc.perform(post("/api/messages/user").contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {"userId":" user-1 ","conversationId":%d,"content":"  你好\\n世界  ",
-                                 "role":"assistant","status":"FAILED","sequence":99,"id":999999,
-                                 "modelName":"forged-model","tokenCount":123}
-                                """.formatted(conversationId)))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.code").value(0))
-                .andExpect(jsonPath("$.data.id").isNumber())
-                .andExpect(jsonPath("$.data.conversationId").value(conversationId.intValue()))
-                .andExpect(jsonPath("$.data.role").value("user"))
-                .andExpect(jsonPath("$.data.content").value("  你好\n世界  "))
-                .andExpect(jsonPath("$.data.sequence").value(1))
-                .andExpect(jsonPath("$.data.status").value("COMPLETED"))
-                .andExpect(jsonPath("$.data.modelName").value(nullValue()))
-                .andExpect(jsonPath("$.data.tokenCount").value(nullValue()))
-                .andExpect(jsonPath("$.data.createdAt").isNotEmpty())
-                .andExpect(jsonPath("$.data.updatedAt").isNotEmpty())
-                .andExpect(jsonPath("$.data.conversation").doesNotExist())
-                .andExpect(content().string(not(containsString("private-password-hash"))));
+    void savesUserMessageWithoutReplyAssociation() {
+        var response = messageService.saveUserMessage(" user-1 ", conversationId, "  你好\n世界  ");
+        assertEquals("user", response.role());
+        assertEquals(1L, response.sequence());
+        assertEquals(MessageStatus.COMPLETED, response.status());
+        assertNull(response.modelName());
+        assertNull(response.tokenCount());
 
         assertEquals(1, messageRepository.count());
         var saved = messageRepository.findAll().getFirst();
@@ -118,103 +101,14 @@ class MessagePersistenceTest {
         assertEquals(MessageStatus.COMPLETED, saved.getStatus());
         assertEquals("  你好\n世界  ", saved.getContent());
         assertEquals(conversationId, saved.getConversation().getId());
+        assertNull(saved.getReplyTo());
     }
 
     @Test
-    void separatesUserAndAssistantEndpointsAndSharesSequence() throws Exception {
-        mvc.perform(post("/api/messages/user").contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {"userId":"user-1","conversationId":%d,"content":"你好",
-                                 "role":"assistant","status":"FAILED","sequence":99,
-                                 "modelName":"forged-model","tokenCount":123}
-                                """.formatted(conversationId)))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.data.role").value("user"))
-                .andExpect(jsonPath("$.data.status").value("COMPLETED"))
-                .andExpect(jsonPath("$.data.sequence").value(1))
-                .andExpect(jsonPath("$.data.modelName").value(nullValue()))
-                .andExpect(jsonPath("$.data.tokenCount").value(nullValue()));
-
-        mvc.perform(post("/api/messages/assistant").contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {"userId":" user-1 ","conversationId":%d,"content":"  你好！\\n  ",
-                                 "modelName":"test-model","tokenCount":8,
-                                 "role":"user","status":"FAILED","sequence":99,"id":999999}
-                                """.formatted(conversationId)))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.code").value(0))
-                .andExpect(jsonPath("$.data.role").value("assistant"))
-                .andExpect(jsonPath("$.data.content").value("  你好！\n  "))
-                .andExpect(jsonPath("$.data.status").value("COMPLETED"))
-                .andExpect(jsonPath("$.data.sequence").value(2))
-                .andExpect(jsonPath("$.data.modelName").value("test-model"))
-                .andExpect(jsonPath("$.data.tokenCount").value(8))
-                .andExpect(jsonPath("$.data.createdAt").isNotEmpty())
-                .andExpect(jsonPath("$.data.conversation").doesNotExist())
-                .andExpect(content().string(not(containsString("private-password-hash"))));
-
-        assertEquals(List.of(MessageRole.USER, MessageRole.ASSISTANT),
-                messageRepository.findByConversation_IdOrderBySequenceAsc(conversationId)
-                        .stream().map(message -> message.getRole()).toList());
-    }
-
-    @Test
-    void assistantEndpointAcceptsLongReplyWithoutOptionalMetadata() throws Exception {
-        mvc.perform(post("/api/messages/assistant").contentType(MediaType.APPLICATION_JSON)
-                        .content(body("user-1", conversationId, "答".repeat(12000))))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.data.role").value("assistant"))
-                .andExpect(jsonPath("$.data.modelName").value(nullValue()))
-                .andExpect(jsonPath("$.data.tokenCount").value(nullValue()));
-        assertEquals(12000, messageRepository.findAll().getFirst().getContent().length());
-    }
-
-    @Test
-    void separatedEndpointsRejectInvalidRequestsAndNonJson() throws Exception {
-        for (String path : List.of("/api/messages/user", "/api/messages/assistant")) {
-            for (String invalid : List.of("{}", "null", "", "{",
-                    body("user-1", conversationId, " "),
-                    body("", conversationId, "消息"),
-                    body("u".repeat(17), conversationId, "消息"),
-                    body("user-1", 0L, "消息"),
-                    "{\"userId\":\"user-1\",\"content\":\"消息\"}")) {
-                mvc.perform(post(path).contentType(MediaType.APPLICATION_JSON).content(invalid))
-                        .andExpect(status().isBadRequest())
-                        .andExpect(jsonPath("$.code").value(40000));
-            }
-            mvc.perform(post(path).contentType(MediaType.TEXT_PLAIN).content("消息"))
-                    .andExpect(status().isUnsupportedMediaType());
-        }
-        for (String metadata : List.of("\"modelName\":\"" + "m".repeat(101) + "\"", "\"tokenCount\":-1")) {
-            mvc.perform(post("/api/messages/assistant").contentType(MediaType.APPLICATION_JSON)
-                            .content("""
-                                    {"userId":"user-1","conversationId":%d,"content":"回复",%s}
-                                    """.formatted(conversationId, metadata)))
-                    .andExpect(status().isBadRequest());
-        }
-        mvc.perform(post("/api/messages/user").contentType(MediaType.APPLICATION_JSON)
-                        .content(body("user-1", conversationId, "x".repeat(10001))))
-                .andExpect(status().isBadRequest());
-        assertEquals(0, messageRepository.count());
-    }
-
-    @Test
-    void separatedEndpointsEnforceConversationAccess() throws Exception {
-        userRepository.saveAndFlush(new User("user-2", "bob"));
+    void directMessageWriteEndpointsRemainUnavailable() throws Exception {
         for (String path : List.of("/api/messages/user", "/api/messages/assistant")) {
             mvc.perform(post(path).contentType(MediaType.APPLICATION_JSON)
-                            .content(body("user-2", conversationId, "不能写入")))
-                    .andExpect(status().isForbidden());
-            mvc.perform(post(path).contentType(MediaType.APPLICATION_JSON)
-                            .content(body("user-1", Long.MAX_VALUE, "不能写入")))
-                    .andExpect(status().isNotFound());
-        }
-        var conversation = conversationRepository.findById(conversationId).orElseThrow();
-        conversation.setDeleted(true);
-        conversationRepository.saveAndFlush(conversation);
-        for (String path : List.of("/api/messages/user", "/api/messages/assistant")) {
-            mvc.perform(post(path).contentType(MediaType.APPLICATION_JSON)
-                            .content(body("user-1", conversationId, "不能写入")))
+                            .content("{\"userId\":\"user-1\",\"conversationId\":%d,\"content\":\"消息\"}".formatted(conversationId)))
                     .andExpect(status().isNotFound());
         }
         assertEquals(0, messageRepository.count());
@@ -223,7 +117,7 @@ class MessagePersistenceTest {
     @Test
     void savesAssistantReplyInternallyAndAllocatesSequencesAcrossRoles() {
         var userMessage = messageService.saveUserMessage("user-1", conversationId, "你好");
-        var reply = messageService.saveAssistantMessage("user-1", conversationId, "你好！", "test-model", 8);
+        var reply = messageService.saveAssistantMessage("user-1", conversationId, userMessage.id(), "你好！", "test-model", 8);
         var nextMessage = messageService.saveUserMessage("user-1", conversationId, "继续");
 
         assertEquals(1L, userMessage.sequence());
@@ -241,14 +135,47 @@ class MessagePersistenceTest {
         assertEquals("你好！", saved.getContent());
         assertEquals("test-model", saved.getModelName());
         assertEquals(8, saved.getTokenCount());
+        assertEquals(userMessage.id(), jdbcTemplate.queryForObject(
+                "select reply_to from message where id = ?", Long.class, reply.id()));
     }
 
     @Test
     void acceptsUserMessageAtLengthLimitAndLongerAssistantReply() {
         var userMessage = messageService.saveUserMessage("user-1", conversationId, "x".repeat(10000));
-        var reply = messageService.saveAssistantMessage("user-1", conversationId, "答".repeat(12000), null, null);
+        var reply = messageService.saveAssistantMessage("user-1", conversationId, userMessage.id(), "答".repeat(12000), null, null);
         assertEquals(10000, userMessage.content().length());
+        assertNull(reply.modelName());
+        assertNull(reply.tokenCount());
         assertEquals(12000, messageRepository.findById(reply.id()).orElseThrow().getContent().length());
+    }
+
+    @Test
+    void rejectsUnlinkedCrossConversationAndNonUserReplyTargets() {
+        var owner = userRepository.findById("user-1").orElseThrow();
+        var other = conversationRepository.saveAndFlush(new Conversation(owner));
+        var otherQuestion = messageService.saveUserMessage("user-1", other.getId(), "另一会话的问题");
+        var question = messageService.saveUserMessage("user-1", conversationId, "问题");
+        var reply = messageService.saveAssistantMessage("user-1", conversationId, question.id(), "回复", null, null);
+
+        for (Long target : new Long[]{null, 0L, Long.MAX_VALUE, otherQuestion.id(), reply.id()}) {
+            assertError(ResultCode.BAD_REQUEST,
+                    () -> messageService.saveAssistantMessage("user-1", conversationId, target, "错误回复", null, null));
+        }
+        assertError(ResultCode.CONFLICT,
+                () -> messageService.saveAssistantMessage("user-1", conversationId, question.id(), "重复回复", null, null));
+        assertEquals(3, messageRepository.count());
+    }
+
+    @Test
+    void databaseRejectsMissingAndDuplicateReplyTargets() {
+        var question = messageService.saveUserMessage("user-1", conversationId, "问题");
+        messageService.saveAssistantMessage("user-1", conversationId, question.id(), "回复", null, null);
+        var other = messageService.saveUserMessage("user-1", conversationId, "另一问题");
+
+        assertThrows(DataIntegrityViolationException.class, () -> jdbcTemplate.update(
+                "update message set reply_to = ? where id = ?", Long.MAX_VALUE, other.id()));
+        assertThrows(DataIntegrityViolationException.class, () -> jdbcTemplate.update(
+                "update message set reply_to = ? where id = ?", question.id(), other.id()));
     }
 
     @Test
@@ -286,50 +213,38 @@ class MessagePersistenceTest {
     }
 
     @Test
-    void rejectsOtherUsersConversation() throws Exception {
+    void rejectsOtherUsersConversation() {
         userRepository.saveAndFlush(new User("user-2", "bob"));
-        mvc.perform(post("/api/messages/user").contentType(MediaType.APPLICATION_JSON)
-                        .content(body("user-2", conversationId, "不能写入")))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value(40300));
-        BusinessException exception = assertThrows(BusinessException.class,
-                () -> messageService.saveAssistantMessage("user-2", conversationId, "也不能写入", null, null));
-        assertEquals(ResultCode.FORBIDDEN, exception.getResultCode());
+        assertError(ResultCode.FORBIDDEN,
+                () -> messageService.saveUserMessage("user-2", conversationId, "不能写入"));
+        assertError(ResultCode.FORBIDDEN,
+                () -> messageService.saveAssistantMessage("user-2", conversationId, 1L, "也不能写入", null, null));
         assertEquals(0, messageRepository.count());
     }
 
     @Test
-    void rejectsDeletedAndMissingConversations() throws Exception {
+    void rejectsDeletedAndMissingConversations() {
         var conversation = conversationRepository.findById(conversationId).orElseThrow();
         conversation.setDeleted(true);
         conversationRepository.saveAndFlush(conversation);
 
         for (Long id : List.of(conversationId, Long.MAX_VALUE)) {
-            mvc.perform(post("/api/messages/user").contentType(MediaType.APPLICATION_JSON)
-                            .content(body("user-1", id, "不能写入")))
-                    .andExpect(status().isNotFound())
-                    .andExpect(jsonPath("$.code").value(40400))
-                    .andExpect(jsonPath("$.message").value(
-                            id.equals(conversationId) ? "会话已删除" : "会话不存在"));
+            assertError(ResultCode.NOT_FOUND,
+                    () -> messageService.saveUserMessage("user-1", id, "不能写入"));
+            assertError(ResultCode.NOT_FOUND,
+                    () -> messageService.saveAssistantMessage("user-1", id, 1L, "也不能写入", null, null));
         }
         assertEquals(0, messageRepository.count());
     }
 
     @Test
-    void rejectsInvalidRequestsWithoutSaving() throws Exception {
-        List<String> invalidBodies = List.of(
-                "{}", "null", "", "{",
-                "{\"userId\":\"user-1\",\"conversationId\":" + conversationId + "}",
-                body("user-1", conversationId, ""), body("user-1", conversationId, "  "),
-                body("user-1", conversationId, "x".repeat(10001)),
-                body("", conversationId, "消息"), body(" ", conversationId, "消息"),
-                body("u".repeat(17), conversationId, "消息"),
-                body("user-1", 0L, "消息"), body("user-1", -1L, "消息"),
-                "{\"userId\":\"user-1\",\"content\":\"消息\"}");
-        for (String body : invalidBodies) {
-            mvc.perform(post("/api/messages/user").contentType(MediaType.APPLICATION_JSON).content(body))
-                    .andExpect(status().isBadRequest())
-                    .andExpect(jsonPath("$.code").value(40000));
+    void rejectsInvalidRequestsWithoutSaving() {
+        for (String userId : new String[]{null, "", " ", "u".repeat(17)}) {
+            assertError(ResultCode.BAD_REQUEST,
+                    () -> messageService.saveUserMessage(userId, conversationId, "消息"));
+        }
+        for (Long id : new Long[]{null, 0L, -1L}) {
+            assertError(ResultCode.BAD_REQUEST, () -> messageService.saveUserMessage("user-1", id, "消息"));
         }
         assertThrows(BusinessException.class, () -> messageService.saveUserMessage(null));
         assertEquals(0, messageRepository.count());
@@ -347,21 +262,13 @@ class MessagePersistenceTest {
     @Test
     void rejectsInvalidAssistantContentAndMetadata() {
         assertThrows(BusinessException.class,
-                () -> messageService.saveAssistantMessage("user-1", conversationId, null, null, null));
+                () -> messageService.saveAssistantMessage("user-1", conversationId, 1L, null, null, null));
         assertThrows(BusinessException.class,
-                () -> messageService.saveAssistantMessage("user-1", conversationId, " ", null, null));
+                () -> messageService.saveAssistantMessage("user-1", conversationId, 1L, " ", null, null));
         assertThrows(BusinessException.class,
-                () -> messageService.saveAssistantMessage("user-1", conversationId, "回复", "m".repeat(101), null));
+                () -> messageService.saveAssistantMessage("user-1", conversationId, 1L, "回复", "m".repeat(101), null));
         assertThrows(BusinessException.class,
-                () -> messageService.saveAssistantMessage("user-1", conversationId, "回复", null, -1));
-        assertEquals(0, messageRepository.count());
-    }
-
-    @Test
-    void requiresJsonContentType() throws Exception {
-        mvc.perform(post("/api/messages/user").contentType(MediaType.TEXT_PLAIN).content("你好"))
-                .andExpect(status().isUnsupportedMediaType())
-                .andExpect(jsonPath("$.code").value(41500));
+                () -> messageService.saveAssistantMessage("user-1", conversationId, 1L, "回复", null, -1));
         assertEquals(0, messageRepository.count());
     }
 
@@ -397,7 +304,7 @@ class MessagePersistenceTest {
         return request;
     }
 
-    private String body(String userId, Long id, String content) {
-        return "{\"userId\":\"%s\",\"conversationId\":%d,\"content\":\"%s\"}".formatted(userId, id, content);
+    private void assertError(ResultCode code, Runnable action) {
+        assertEquals(code, assertThrows(BusinessException.class, action::run).getResultCode());
     }
 }

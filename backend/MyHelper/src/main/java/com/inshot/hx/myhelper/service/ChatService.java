@@ -19,7 +19,7 @@ public class ChatService {
     private final MessageService messageService;
     private final AiService aiService;
 
-    private long MAXROUND=50;
+    private final long MAXROUND=15;
 
     private Set<Long> busyConversations = ConcurrentHashMap.newKeySet();
 
@@ -45,6 +45,7 @@ public class ChatService {
             throw new BusinessException(
                     ResultCode.CONFLICT, "本轮对话未完成，请等待对话完成后发送");
         }
+        log.info("对话{}加入忙列表...",conversationId);
 
         var userContent=request.content();
         var userId=request.userId();
@@ -55,9 +56,9 @@ public class ChatService {
             var userMessage = messageService.saveUserMessage(userId, conversationId, userContent);
             var conversationHistory=messageService.getModelHistory(userId,conversationId, userMessage.sequence(), MAXROUND);
             var aiResponse = aiService.chat(conversationHistory, request.content());
-            var assistantMessage = messageService.saveAssistantMessage(request.userId(),
-                    request.conversationId(), aiResponse.reply(), aiResponse.model(),
-                    aiResponse.usage() == null ? null : aiResponse.usage().completionTokens());
+            var assistantMessage = messageService.saveAssistantMessage(userId,
+                    conversationId, userMessage.id(), aiResponse.reply(), aiResponse.model(),
+                    aiResponse.usage() == null ? 0 : aiResponse.usage().completionTokens());
             log.info("对话{}已完成AI回复，回复内容{}",conversationId,assistantMessage.content());
             return new SendMessageResponse(userMessage, assistantMessage);
         }

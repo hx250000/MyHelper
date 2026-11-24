@@ -52,4 +52,5 @@ coverage/
 
 # else
 backend/MyHelper/docs/addition
+backend/MyHelper/docs/migrations
 postman/

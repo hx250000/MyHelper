@@ -126,9 +126,9 @@ class ExceptionLoggingTest {
         String content = "private-content".repeat(1000);
         assertLogged(BusinessException.class, () -> service.saveUserMessage("user-1", 10L, content),
                 MessageService.class, Level.WARN, "conversationId=10", "contentLength=15000");
-        assertLogged(BusinessException.class, () -> service.saveAssistantMessage("user-1", 10L, content, "x".repeat(101), 1),
+        assertLogged(BusinessException.class, () -> service.saveAssistantMessage("user-1", 10L, 1L, content, "x".repeat(101), 1),
                 MessageService.class, Level.WARN, "modelNameLength=101");
-        assertLogged(BusinessException.class, () -> service.saveAssistantMessage("user-1", 10L, content, "model", -1),
+        assertLogged(BusinessException.class, () -> service.saveAssistantMessage("user-1", 10L, 1L, content, "model", -1),
                 MessageService.class, Level.WARN, "tokenCount=-1");
         assertLogged(BusinessException.class, () -> service.getHistoryForUser(null, 10L),
                 MessageService.class, Level.WARN, "用户 ID 为空", "userIdLength=null");

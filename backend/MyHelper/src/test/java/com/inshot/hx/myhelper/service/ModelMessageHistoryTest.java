@@ -61,9 +61,9 @@ class ModelMessageHistoryTest {
 
     @Test
     void returnsLatestCompleteRoundsInSequenceOrderWithExclusiveCutoff() {
-        // 插入顺序不等于 sequence 顺序；序号有间隔也不影响相邻消息配对。
-        save(MessageRole.ASSISTANT, 40, "第二答", MessageStatus.COMPLETED);
-        save(MessageRole.USER, 30, "  第二问\n代码  ", MessageStatus.COMPLETED);
+        // 插入顺序不等于 sequence 顺序；问答按序号排序，不按主键排序。
+        var second = save(MessageRole.USER, 30, "  第二问\n代码  ", MessageStatus.COMPLETED);
+        saveReply(second, 40, "第二答", MessageStatus.COMPLETED);
         saveRound(10, 20);
         saveRound(50, 60);
         saveRound(70, 80);
@@ -79,13 +79,36 @@ class ModelMessageHistoryTest {
     }
 
     @Test
+    void pairsInterleavedWritesByQuestionIdAndOrdersByQuestionNotReply() {
+        var first = messageService.saveUserMessage("user-1", conversation.getId(), "第一问");
+        var second = messageService.saveUserMessage("user-1", conversation.getId(), "第二问");
+        var firstReply = messageService.saveAssistantMessage("user-1", conversation.getId(), first.id(),
+                "第一答", null, null);
+        var secondReply = messageService.saveAssistantMessage("user-1", conversation.getId(), second.id(),
+                "第二答", null, null);
+        assertEquals(List.of(first.id(), firstReply.id(), second.id(), secondReply.id()),
+                history(5, 2).stream().map(MessageResponse::id).toList());
+        assertEquals(List.of(second.id(), secondReply.id()),
+                history(5, 1).stream().map(MessageResponse::id).toList());
+        assertEquals(List.of(first.id(), firstReply.id()),
+                history(4, 2).stream().map(MessageResponse::id).toList());
+
+        var third = save(MessageRole.USER, 5, "第三问", MessageStatus.COMPLETED);
+        var fourth = save(MessageRole.USER, 6, "第四问", MessageStatus.COMPLETED);
+        saveReply(fourth, 7, "第四答", MessageStatus.COMPLETED);
+        saveReply(third, 8, "第三答", MessageStatus.COMPLETED);
+        assertEquals(List.of(5L, 8L, 6L, 7L), sequences(history(9, 2)));
+    }
+
+    @Test
     void isolatesConversationsAndDoesNotChangeDisplayHistoryOrActivity() {
         saveRound(1, 2);
         save(MessageRole.USER, 3, "未回答的问题", MessageStatus.COMPLETED);
         var other = conversationRepository.saveAndFlush(
                 new Conversation(userRepository.findById("user-1").orElseThrow()));
-        messageRepository.saveAndFlush(new Message(other, MessageRole.USER, 1, "其他会话的问题"));
+        var otherQuestion = messageRepository.saveAndFlush(new Message(other, MessageRole.USER, 1, "其他会话的问题"));
         var otherReply = new Message(other, MessageRole.ASSISTANT, 2, "其他会话的回复");
+        otherReply.setReplyTo(otherQuestion);
         otherReply.setStatus(MessageStatus.COMPLETED);
         messageRepository.saveAndFlush(otherReply);
         var updatedAt = conversationRepository.findById(conversation.getId()).orElseThrow().getUpdatedAt();
@@ -109,7 +132,7 @@ class ModelMessageHistoryTest {
     }
 
     @Test
-    void acceptsMaximumWindowAndDropsOnlyTheOldestCompleteRound() {
+    void limitsHistoryToLatestCompleteRounds() {
         for (long sequence = 1; sequence <= 201; sequence += 2) {
             saveRound(sequence, sequence + 1);
         }
@@ -130,10 +153,10 @@ class ModelMessageHistoryTest {
             if (status == MessageStatus.COMPLETED) {
                 continue;
             }
-            save(MessageRole.USER, sequence++, "问题", MessageStatus.COMPLETED);
-            save(MessageRole.ASSISTANT, sequence++, "未完成的回复", status);
-            save(MessageRole.USER, sequence++, "未完成的用户消息", status);
-            save(MessageRole.ASSISTANT, sequence++, "回复", MessageStatus.COMPLETED);
+            var question = save(MessageRole.USER, sequence++, "问题", MessageStatus.COMPLETED);
+            saveReply(question, sequence++, "未完成的回复", status);
+            var unfinished = save(MessageRole.USER, sequence++, "未完成的用户消息", status);
+            saveReply(unfinished, sequence++, "回复", MessageStatus.COMPLETED);
         }
         saveRound(sequence, sequence + 1);
 
@@ -141,14 +164,14 @@ class ModelMessageHistoryTest {
     }
 
     @Test
-    void doesNotPairAcrossOrphansFailedRepliesOrOtherRoles() {
+    void excludesUnlinkedRepliesButAcceptsLinkedRoundsWithToolMessagesBetween() {
         save(MessageRole.ASSISTANT, 1, "孤立回复", MessageStatus.COMPLETED);
-        save(MessageRole.USER, 2, "失败的问题", MessageStatus.COMPLETED);
-        save(MessageRole.ASSISTANT, 3, "失败回复", MessageStatus.FAILED);
+        var failed = save(MessageRole.USER, 2, "失败的问题", MessageStatus.COMPLETED);
+        saveReply(failed, 3, "失败回复", MessageStatus.FAILED);
         save(MessageRole.ASSISTANT, 4, "不能越过失败回复配对", MessageStatus.COMPLETED);
-        save(MessageRole.USER, 5, "被工具消息隔开", MessageStatus.COMPLETED);
+        var linked = save(MessageRole.USER, 5, "被工具消息隔开", MessageStatus.COMPLETED);
         save(MessageRole.TOOL, 6, "工具结果", MessageStatus.COMPLETED);
-        save(MessageRole.ASSISTANT, 7, "工具回复", MessageStatus.COMPLETED);
+        saveReply(linked, 7, "工具回复", MessageStatus.COMPLETED);
         save(MessageRole.USER, 8, "被系统消息隔开", MessageStatus.COMPLETED);
         save(MessageRole.SYSTEM, 9, "系统消息", MessageStatus.COMPLETED);
         save(MessageRole.ASSISTANT, 10, "系统后的回复", MessageStatus.COMPLETED);
@@ -156,19 +179,19 @@ class ModelMessageHistoryTest {
         saveRound(12, 13);
         save(MessageRole.USER, 14, "本次问题", MessageStatus.COMPLETED);
 
-        assertEquals(List.of(12L, 13L), sequences(history(14, 10)));
+        assertEquals(List.of(5L, 7L, 12L, 13L), sequences(history(14, 10)));
     }
 
     @Test
     void skipsBlankRoundsAndSelectsValidRoundsWithinWindow() {
         saveRound(1, 2);
         saveRound(3, 4);
-        save(MessageRole.USER, 5, "有效问题", MessageStatus.COMPLETED);
-        save(MessageRole.ASSISTANT, 6, " \n\t\u3000", MessageStatus.COMPLETED);
-        save(MessageRole.USER, 7, "", MessageStatus.COMPLETED);
-        save(MessageRole.ASSISTANT, 8, "有效回复", MessageStatus.COMPLETED);
-        save(MessageRole.USER, 9, "\n\t", MessageStatus.COMPLETED);
-        save(MessageRole.ASSISTANT, 10, "有效回复", MessageStatus.COMPLETED);
+        var valid = save(MessageRole.USER, 5, "有效问题", MessageStatus.COMPLETED);
+        saveReply(valid, 6, " \n\t\u3000", MessageStatus.COMPLETED);
+        var empty = save(MessageRole.USER, 7, "", MessageStatus.COMPLETED);
+        saveReply(empty, 8, "有效回复", MessageStatus.COMPLETED);
+        var blank = save(MessageRole.USER, 9, "\n\t", MessageStatus.COMPLETED);
+        saveReply(blank, 10, "有效回复", MessageStatus.COMPLETED);
 
         assertEquals(List.of(1L, 2L, 3L, 4L), sequences(history(11, 2)));
         assertEquals(List.of(3L, 4L), sequences(history(11, 1)));
@@ -176,19 +199,19 @@ class ModelMessageHistoryTest {
     }
 
     @Test
-    void doesNotFetchOlderMessagesWhenWindowContainsOnlyInvalidRounds() {
+    void failedRepliesDoNotDisplaceOlderCompleteRounds() {
         saveRound(1, 2);
         for (long sequence = 3; sequence <= 202; sequence += 2) {
-            save(MessageRole.USER, sequence, "问题", MessageStatus.COMPLETED);
-            save(MessageRole.ASSISTANT, sequence + 1, "", MessageStatus.FAILED);
+            var question = save(MessageRole.USER, sequence, "问题", MessageStatus.COMPLETED);
+            saveReply(question, sequence + 1, "", MessageStatus.FAILED);
         }
 
-        assertEquals(List.of(), history(203, 100));
+        assertEquals(List.of(1L, 2L), sequences(history(203, 100)));
         assertEquals(202, messageService.getHistoryForUser("user-1", conversation.getId()).size());
     }
 
     @Test
-    void skipsOrphanReplyAtWindowStartAndUnansweredQuestionAtWindowEnd() {
+    void unansweredQuestionDoesNotCutTheOldestRoundInHalf() {
         for (long sequence = 1; sequence <= 199; sequence += 2) {
             saveRound(sequence, sequence + 1);
         }
@@ -196,9 +219,8 @@ class ModelMessageHistoryTest {
 
         var history = history(202, 100);
 
-        // 最近 200 条为 sequence 2～201；2 是窗口切断的孤立回复，201 尚无回复。
-        assertEquals(198, history.size());
-        assertEquals(3L, history.getFirst().sequence());
+        assertEquals(200, history.size());
+        assertEquals(1L, history.getFirst().sequence());
         assertEquals(200L, history.getLast().sequence());
     }
 
@@ -247,14 +269,21 @@ class ModelMessageHistoryTest {
     }
 
     private void saveRound(long userSequence, long assistantSequence) {
-        save(MessageRole.USER, userSequence, "问题" + userSequence, MessageStatus.COMPLETED);
-        save(MessageRole.ASSISTANT, assistantSequence, "回复" + assistantSequence, MessageStatus.COMPLETED);
+        var question = save(MessageRole.USER, userSequence, "问题" + userSequence, MessageStatus.COMPLETED);
+        saveReply(question, assistantSequence, "回复" + assistantSequence, MessageStatus.COMPLETED);
     }
 
-    private void save(MessageRole role, long sequence, String content, MessageStatus status) {
+    private Message save(MessageRole role, long sequence, String content, MessageStatus status) {
         var message = new Message(conversation, role, sequence, content);
         message.setStatus(status);
-        messageRepository.saveAndFlush(message);
+        return messageRepository.saveAndFlush(message);
+    }
+
+    private void saveReply(Message question, long sequence, String content, MessageStatus status) {
+        var reply = new Message(conversation, MessageRole.ASSISTANT, sequence, content);
+        reply.setReplyTo(question);
+        reply.setStatus(status);
+        messageRepository.saveAndFlush(reply);
     }
 
     private void assertError(ResultCode code, Runnable action) {

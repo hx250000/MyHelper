@@ -30,7 +30,8 @@ import java.util.Objects;
 @Getter
 @Entity
 @Table(name = "message", uniqueConstraints = {
-        @UniqueConstraint(name = "uk_message_conversation_sequence", columnNames = {"conversation_id", "`sequence`"})
+        @UniqueConstraint(name = "uk_message_conversation_sequence", columnNames = {"conversation_id", "`sequence`"}),
+        @UniqueConstraint(name = "uk_message_reply_to", columnNames = "reply_to")
 }, indexes = {
         @Index(name = "idx_message_conversation_created", columnList = "conversation_id, created_at")
 })
@@ -70,6 +71,13 @@ public class Message extends BaseTimeEntity {
     @Setter
     @Column(name = "token_count")
     private Integer tokenCount;
+
+    /** 用户消息和未回填的旧回复不设置此关联；每条用户消息最多对应一条回复。 */
+    @Setter
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "reply_to", updatable = false,
+            foreignKey = @ForeignKey(name = "fk_message_reply_to"))
+    private Message replyTo;
 
     public Message(Conversation conversation, MessageRole role, long sequence, String content) {
         this.conversation = Objects.requireNonNull(conversation, () -> {

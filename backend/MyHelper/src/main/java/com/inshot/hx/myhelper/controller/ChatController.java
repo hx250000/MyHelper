@@ -10,7 +10,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-/** 正式聊天入口；原 MessageController 保持为独立存储和历史查询接口。 */
+/** 正式聊天写入入口；MessageController 只提供历史查询。 */
 @RestController
 @RequestMapping("/api/chat")
 public class ChatController {

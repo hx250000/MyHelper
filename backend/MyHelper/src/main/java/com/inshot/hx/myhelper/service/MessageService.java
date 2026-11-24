@@ -34,10 +34,8 @@ public class MessageService {
     }
 
     /**
-     * 一次读取本次用户消息之前最近 200 条原始消息，在内存中选取完整问答。
-     * 返回最近 maxRounds 轮，按 sequence 升序排列；不足时直接返回，不继续补查。
-     * maxRounds 为轮数（1～100），每轮两条，空白内容和未完成轮次均不进入上下文。
-     * 当前数据模型没有问答关联 ID，只能按相邻消息配对，调用方必须保证同会话串行发送。
+     * 按回复关联读取本次用户消息之前的已完成问答，最多检查 100 个候选轮次。
+     * 排除内容空白的轮次，取最近 maxRounds 轮，再按提问顺序从旧到新返回。
      */
     @Transactional(readOnly = true)
     public List<MessageResponse> getModelHistory(String userId, long conversationId,
@@ -60,28 +58,19 @@ public class MessageService {
                 });
         checkConversationAccess(conversation, userId);
 
-        var messages = messageRepository.findByConversation_IdAndSequenceLessThanOrderBySequenceDesc(
-                conversationId, beforeSequence, PageRequest.of(0, (int) MAX_MODEL_HISTORY_ROUNDS * 2));
-        var ordered = messages.reversed();
-        var history = new ArrayList<MessageResponse>();
-        for (int i = 0; i + 1 < ordered.size(); i++) {
-            var userMessage = ordered.get(i);
-            var assistantMessage = ordered.get(i + 1);
-            // 必须在原始序列中相邻，不能先删除失败消息再配对。
-            if (isCompletedMessage(userMessage, MessageRole.USER)
-                    && isCompletedMessage(assistantMessage, MessageRole.ASSISTANT)) {
-                history.add(MessageResponse.from(userMessage));
-                history.add(MessageResponse.from(assistantMessage));
-            }
+        var replies = messageRepository.findModelHistoryReplies(conversationId, beforeSequence,
+                MessageRole.USER, MessageRole.ASSISTANT, MessageStatus.COMPLETED,
+                PageRequest.of(0, (int) MAX_MODEL_HISTORY_ROUNDS));
+        var recentRounds = replies.stream()
+                .filter(reply -> !reply.getContent().isBlank() && !reply.getReplyTo().getContent().isBlank())
+                .limit(maxRounds)
+                .toList();
+        var history = new ArrayList<MessageResponse>(recentRounds.size() * 2);
+        for (var reply : recentRounds.reversed()) {
+            history.add(MessageResponse.from(reply.getReplyTo()));
+            history.add(MessageResponse.from(reply));
         }
-        int start = Math.max(0, history.size() - (int) maxRounds * 2);
-        return List.copyOf(history.subList(start, history.size()));
-    }
-
-    private boolean isCompletedMessage(Message message, MessageRole role) {
-        return message.getRole() == role
-                && message.getStatus() == MessageStatus.COMPLETED
-                && !message.getContent().isBlank();
+        return List.copyOf(history);
     }
 
     /** 查询用于前端展示的完整历史，保留每条消息的实际状态。 */
@@ -119,12 +108,12 @@ public class MessageService {
                     userId, conversationId, content.length());
             throw new BusinessException(ResultCode.BAD_REQUEST, "消息不能超过 10000 个字符");
         }
-        return saveCompletedMessage(userId, conversationId, content, MessageRole.USER, null, null);
+        return saveCompletedMessage(userId, conversationId, content, MessageRole.USER, null, null, null);
     }
 
-    /** 保存 AI 消息，不调用模型；角色固定为 assistant。 */
+    /** 保存 AI 消息，不调用模型；关联同一会话中已保存的用户消息。 */
     @Transactional
-    public MessageResponse saveAssistantMessage(String userId, Long conversationId, String content,
+    public MessageResponse saveAssistantMessage(String userId, Long conversationId, Long replyToMessageId, String content,
                                                 String modelName, Integer tokenCount) {
         validateContent(content);
         if (modelName != null && modelName.length() > 100) {
@@ -138,11 +127,12 @@ public class MessageService {
             throw new BusinessException(ResultCode.BAD_REQUEST, "Token 数量不能为负数");
         }
         return saveCompletedMessage(userId, conversationId, content,
-                MessageRole.ASSISTANT, modelName, tokenCount);
+                MessageRole.ASSISTANT, replyToMessageId, modelName, tokenCount);
     }
 
     private MessageResponse saveCompletedMessage(String userId, Long conversationId, String content,
-                                                 MessageRole role, String modelName, Integer tokenCount) {
+                                                 MessageRole role, Long replyToMessageId, String modelName,
+                                                 Integer tokenCount) {
         validateConversationReference(userId, conversationId);
 
         // 必须先锁会话、再查询最大序号，且锁与消息保存处于同一个短事务。
@@ -153,18 +143,41 @@ public class MessageService {
                     return new BusinessException(ResultCode.NOT_FOUND, "会话不存在");
                 });
         checkConversationAccess(conversation, userId);
+        Message question = role == MessageRole.ASSISTANT ? findQuestionForReply(conversationId, replyToMessageId) : null;
         long maxSequence = messageRepository.findMaxSequence(conversationId);
         if (maxSequence == Long.MAX_VALUE) {
-            log.warn("保存消息失败：会话消息序号已达 Long 上限，userId={}, conversationId={}, maxSequence={}",
+            log.warn("保存消息失败：会话消息序号已达上限，userId={}, conversationId={}, maxSequence={}",
                     userId, conversationId, maxSequence);
             throw new BusinessException(ResultCode.CONFLICT, "会话消息序号已达上限");
         }
         Message message = new Message(conversation, role, maxSequence + 1, content);
+        message.setReplyTo(question);
         message.setStatus(MessageStatus.COMPLETED);
         message.setModelName(modelName);
         message.setTokenCount(tokenCount);
         conversation.markMessageActivity();
         return MessageResponse.from(messageRepository.saveAndFlush(message));
+    }
+
+    // 寻找回复关联的用户消息
+    private Message findQuestionForReply(Long conversationId, Long replyToMessageId) {
+        if (replyToMessageId == null || replyToMessageId < 1) {
+            log.warn("保存 AI 消息失败：关联消息 ID 必须为正整数，conversationId={}, replyToMessageId={}",
+                    conversationId, replyToMessageId);
+            throw new BusinessException(ResultCode.BAD_REQUEST, "回复必须关联一条用户消息");
+        }
+        Message question = messageRepository.findByIdAndConversation_IdAndRole(
+                replyToMessageId, conversationId, MessageRole.USER).orElseThrow(() -> {
+                    log.warn("保存 AI 消息失败：同会话用户消息不存在，conversationId={}, replyToMessageId={}",
+                            conversationId, replyToMessageId);
+                    return new BusinessException(ResultCode.BAD_REQUEST, "回复必须关联同一会话的用户消息");
+                });
+        if (messageRepository.existsByReplyTo_Id(replyToMessageId)) {
+            log.warn("保存 AI 消息失败：用户消息已有回复，conversationId={}, replyToMessageId={}",
+                    conversationId, replyToMessageId);
+            throw new BusinessException(ResultCode.CONFLICT, "该用户消息已有回复");
+        }
+        return question;
     }
 
     private void validateConversationReference(String userId, Long conversationId) {
