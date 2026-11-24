@@ -36,6 +36,11 @@ spring:
       chat:
         model: ${AI_MODEL}
 
+myhelper:
+  chat:
+    # 应用侧的估算输入上限；按模型窗口为回复和误差留出余量后配置。
+    max-input-tokens: ${CHAT_MAX_INPUT_TOKENS:8192}
+
 management:
   endpoints:
     web:

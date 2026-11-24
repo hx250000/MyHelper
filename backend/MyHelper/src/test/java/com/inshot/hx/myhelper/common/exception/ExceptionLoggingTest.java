@@ -20,6 +20,7 @@ import com.inshot.hx.myhelper.repository.ConversationRepository;
 import com.inshot.hx.myhelper.repository.MessageRepository;
 import com.inshot.hx.myhelper.repository.UserRepository;
 import com.inshot.hx.myhelper.service.AiService;
+import com.inshot.hx.myhelper.tools.ChatContextBudget;
 import com.inshot.hx.myhelper.service.ChatService;
 import com.inshot.hx.myhelper.service.ConversationService;
 import com.inshot.hx.myhelper.service.MessageService;
@@ -201,7 +202,7 @@ class ExceptionLoggingTest {
     @Test
     void aiLogsValidationAndUnsupportedHistoryRole() {
         var model = mock(ChatModel.class);
-        var service = new AiService(model);
+        var service = new AiService(model, new ChatContextBudget(8192));
         assertLogged(BusinessException.class, () -> service.chat(List.of(), null),
                 AiService.class, Level.WARN, "消息为 null 或空白");
         assertLogged(BusinessException.class, () -> service.chat(List.of(), "x".repeat(10001)),
@@ -217,7 +218,7 @@ class ExceptionLoggingTest {
     @Test
     void aiLogsUpstreamStatusWithoutCredentialsOrProviderBody() {
         var model = mock(ChatModel.class);
-        var service = new AiService(model);
+        var service = new AiService(model, new ChatContextBudget(8192));
         var upstream = new HttpClientErrorException(HttpStatus.UNAUTHORIZED, "api-key=secret");
         when(model.call(any(org.springframework.ai.chat.prompt.Prompt.class))).thenThrow(upstream);
         var exception = assertLogged(BusinessException.class, () -> service.chat(List.of(), "private-content"),
@@ -231,7 +232,7 @@ class ExceptionLoggingTest {
     @Test
     void aiDistinguishesAllEmptyResponseShapes() {
         var model = mock(ChatModel.class);
-        var service = new AiService(model);
+        var service = new AiService(model, new ChatContextBudget(8192));
         when(model.call(any(org.springframework.ai.chat.prompt.Prompt.class))).thenReturn(null);
         assertLogged(BusinessException.class, () -> service.chat(List.of(), "hi"),
                 AiService.class, Level.WARN, "响应对象为 null");

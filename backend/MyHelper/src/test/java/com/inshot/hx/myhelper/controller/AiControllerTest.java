@@ -2,6 +2,7 @@ package com.inshot.hx.myhelper.controller;
 
 import com.inshot.hx.myhelper.common.exception.GlobalExceptionHandler;
 import com.inshot.hx.myhelper.service.AiService;
+import com.inshot.hx.myhelper.tools.ChatContextBudget;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.messages.AssistantMessage;
@@ -42,7 +43,7 @@ class AiControllerTest {
     }
 
     private void useModel(ChatModel model) {
-        mvc = MockMvcBuilders.standaloneSetup(new AiController(new AiService(model)))
+        mvc = MockMvcBuilders.standaloneSetup(new AiController(new AiService(model, new ChatContextBudget(8192))))
                 .setControllerAdvice(new GlobalExceptionHandler()).build();
     }
 

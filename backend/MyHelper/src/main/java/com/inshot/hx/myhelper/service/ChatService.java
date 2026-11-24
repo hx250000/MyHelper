@@ -52,10 +52,12 @@ public class ChatService {
         log.info("对话：{}，用户：{}发送消息,等待回复生成...", conversationId, userId);
 
         try{
+            //校验输入以及估算token消耗
+            aiService.validateQuestion(userContent);
             //提取用户输入信息、对话历史并发送给AI并接收回复
             var userMessage = messageService.saveUserMessage(userId, conversationId, userContent);
             var conversationHistory=messageService.getModelHistory(userId,conversationId, userMessage.sequence(), MAXROUND);
-            var aiResponse = aiService.chat(conversationHistory, request.content());
+            var aiResponse = aiService.chat(conversationHistory, userContent);
             var assistantMessage = messageService.saveAssistantMessage(userId,
                     conversationId, userMessage.id(), aiResponse.reply(), aiResponse.model(),
                     aiResponse.usage() == null ? 0 : aiResponse.usage().completionTokens());
