@@ -23,6 +23,9 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(BusinessException.class)
     public ResponseEntity<ApiResponse<Void>> handleBusinessException(BusinessException exception) {
         ResultCode resultCode = exception.getResultCode();
+        log.warn("业务请求失败：code={}, status={}, exceptionType={}, reason={}",
+                resultCode.code(), resultCode.httpStatus().value(), exception.getClass().getName(),
+                resultCode == ResultCode.AI_UNAVAILABLE ? resultCode.message() : exception.getMessage());
         return ResponseEntity.status(resultCode.httpStatus())
                 .body(ApiResponse.failure(resultCode.code(), exception.getMessage()));
     }
@@ -44,7 +47,12 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             }
         }
         if (status.is5xxServerError()) {
-            log.error("Spring MVC 请求处理异常", exception);
+            log.error("Spring MVC 请求处理异常：status={}, exceptionType={}",
+                    status.value(), exception.getClass().getName(), exception);
+        } else {
+            // 不记录原始异常消息，避免 JSON 解析错误携带请求正文或校验错误携带密码。
+            log.warn("Spring MVC 请求被拒绝：status={}, exceptionType={}, reason={}",
+                    status.value(), exception.getClass().getName(), message);
         }
         return super.handleExceptionInternal(exception,
                 ApiResponse.failure(status.value() * 100, message), headers, status, request);

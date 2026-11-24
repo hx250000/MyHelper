@@ -15,9 +15,11 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import lombok.extern.slf4j.Slf4j;
 
 import java.util.Objects;
 
+@Slf4j
 @Getter
 @Entity
 @Table(name = "conversation", indexes = {
@@ -49,7 +51,10 @@ public class Conversation extends BaseTimeEntity {
     private boolean deleted = false;
 
     public Conversation(User user) {
-        this.user = Objects.requireNonNull(user, "所属用户不能为空");
+        this.user = Objects.requireNonNull(user, () -> {
+            log.error("创建会话实体失败：所属用户为 null");
+            return "所属用户不能为空";
+        });
     }
 
     /** 消息新增也属于会话活动；仅新增子实体不会触发会话的 PreUpdate。 */

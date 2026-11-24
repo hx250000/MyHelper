@@ -12,11 +12,13 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Persistable;
 
 import java.util.Objects;
 
 /** 用户资料及会话归属；注册时由服务端生成最长 16 字符的 ID，不实现登录。 */
+@Slf4j
 @Getter
 @Entity
 @Table(name = "`user`", uniqueConstraints = {
@@ -43,10 +45,15 @@ public class User extends BaseTimeEntity implements Persistable<String> {
 
     public User(String id, String username) {
         if (id == null || id.isBlank() || id.length() > 16) {
+            log.error("创建用户实体失败：用户 ID 为空、空白或超过 16 个字符，idLength={}",
+                    id == null ? null : id.length());
             throw new IllegalArgumentException("用户 ID 必须为 1 到 16 个字符");
         }
         this.id = id;
-        this.username = Objects.requireNonNull(username, "用户名不能为空");
+        this.username = Objects.requireNonNull(username, () -> {
+            log.error("创建用户实体失败：用户名为 null，userId={}", id);
+            return "用户名不能为空";
+        });
     }
 
     @Override

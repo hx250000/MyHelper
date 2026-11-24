@@ -22,9 +22,11 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import lombok.extern.slf4j.Slf4j;
 
 import java.util.Objects;
 
+@Slf4j
 @Getter
 @Entity
 @Table(name = "message", uniqueConstraints = {
@@ -70,13 +72,23 @@ public class Message extends BaseTimeEntity {
     private Integer tokenCount;
 
     public Message(Conversation conversation, MessageRole role, long sequence, String content) {
-        this.conversation = Objects.requireNonNull(conversation, "所属会话不能为空");
-        this.role = Objects.requireNonNull(role, "消息角色不能为空");
+        this.conversation = Objects.requireNonNull(conversation, () -> {
+            log.error("创建消息实体失败：所属会话为 null，role={}, sequence={}", role, sequence);
+            return "所属会话不能为空";
+        });
+        this.role = Objects.requireNonNull(role, () -> {
+            log.error("创建消息实体失败：消息角色为 null，sequence={}", sequence);
+            return "消息角色不能为空";
+        });
         if (sequence < 1) {
+            log.error("创建消息实体失败：消息序号必须大于 0，role={}, sequence={}", role, sequence);
             throw new IllegalArgumentException("消息序号必须大于 0");
         }
         this.sequence = sequence;
-        this.content = Objects.requireNonNull(content, "消息内容不能为空，可使用空字符串作为回复占位");
+        this.content = Objects.requireNonNull(content, () -> {
+            log.error("创建消息实体失败：消息内容为 null，role={}, sequence={}", role, sequence);
+            return "消息内容不能为空，可使用空字符串作为回复占位";
+        });
         this.status = role == MessageRole.ASSISTANT ? MessageStatus.PENDING : MessageStatus.COMPLETED;
     }
 }
