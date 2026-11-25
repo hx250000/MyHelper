@@ -14,16 +14,15 @@ spring:
       ddl-auto: update
     show-sql: false
 
-# servlet:
-#   multipart:
-#     enabled: true
-#     max-file-size: 4MB      # 单个文件最大限制
-#     max-request-size: 10MB   # 单次请求总大小限制
+  servlet:
+    multipart:
+      max-file-size: 4MB
+      max-request-size: 10MB
   config:
     import: "optional:file:./.env[.properties]"
   ai:
     model:
-      embedding: ${AI_EMBEDDING_MODEL}
+      embedding: ${AI_EMBEDDING_PROVIDER:none}
       image: none
       audio:
         speech: none
@@ -34,12 +33,24 @@ spring:
       timeout: 60s
       max-retries: 0
       chat:
-        model: ${AI_MODEL}
+        options:
+          model: ${AI_MODEL}
+      embedding:
+        # The SDK appends /embeddings; the base URL includes the API version.
+        base-url: ${AI_EMBEDDING_BASE_URL:https://api.siliconflow.cn/v1}
+        api-key: ${AI_EMBEDDING_API_KEY}
+        model: ${AI_EMBEDDING_MODEL:BAAI/bge-m3}
+        metadata-mode: NONE
+        options:
+          model: ${AI_EMBEDDING_MODEL:BAAI/bge-m3}
 
 myhelper:
   chat:
     # 应用侧的估算输入上限；按模型窗口为回复和误差留出余量后配置。
     max-input-tokens: ${CHAT_MAX_INPUT_TOKENS:8192}
+  knowledge:
+    enabled: ${KNOWLEDGE_ENABLED:false}
+    upload-enabled: ${KNOWLEDGE_UPLOAD_ENABLED:false}
 
 management:
   endpoints:

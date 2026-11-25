@@ -3,15 +3,12 @@ package com.inshot.hx.myhelper.controller;
 import com.inshot.hx.myhelper.common.api.ApiResponse;
 import com.inshot.hx.myhelper.dto.request.AiRequest;
 import com.inshot.hx.myhelper.dto.response.AiResponse;
-import com.inshot.hx.myhelper.dto.response.MessageResponse;
 import com.inshot.hx.myhelper.service.AiService;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-
-import java.util.List;
 
 //Ai单独测试接口
 @RestController
