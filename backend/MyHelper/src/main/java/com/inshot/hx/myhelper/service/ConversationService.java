@@ -49,6 +49,7 @@ public class ConversationService {
                 });
         Conversation conversation = new Conversation(user);
         conversation.setTitle("新对话");
+        log.info("用户{}创建新会话{}", userId, conversation.getId());
         // if (title != null) {
         //     conversation.setTitle(title);
         // }

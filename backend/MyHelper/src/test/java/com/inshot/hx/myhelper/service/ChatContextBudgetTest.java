@@ -55,7 +55,7 @@ class ChatContextBudgetTest {
         var model = mock(ChatModel.class);
         var service = new AiService(model, new ChatContextBudget(5));
 
-        var error = assertThrows(BusinessException.class, () -> service.chat_no_history("too many tokens"));
+        var error = assertThrows(BusinessException.class, () -> service.chatWithoutHistory("too many tokens"));
 
         assertEquals(ResultCode.BAD_REQUEST, error.getResultCode());
         verifyNoInteractions(model);

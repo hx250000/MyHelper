@@ -4,13 +4,16 @@ import com.inshot.hx.myhelper.common.api.ResultCode;
 import com.inshot.hx.myhelper.common.exception.BusinessException;
 import com.inshot.hx.myhelper.dto.request.SendMessageRequest;
 import com.inshot.hx.myhelper.dto.response.AiResponse;
+import com.inshot.hx.myhelper.dto.response.KnowledgeReference;
 import com.inshot.hx.myhelper.dto.response.MessageResponse;
 import com.inshot.hx.myhelper.entity.enums.MessageStatus;
 import com.inshot.hx.myhelper.tools.ChatContextBudget;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.document.Document;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -37,7 +40,8 @@ class ChatServiceTest {
                 new AiResponse.TokenUsage(3, 8, 11));
         when(messageService.saveUserMessage("user-1", 10L, "  你好  ")).thenReturn(userMessage);
         when(messageService.getModelHistory("user-1", 10L, 1L, 15L)).thenReturn(history);
-        when(aiService.chat(history, "  你好  ", List.of())).thenReturn(aiResponse);
+        when(aiService.chat(history, "  你好  ", List.of()))
+                .thenReturn(new AiService.ChatResult(aiResponse, List.of()));
         when(messageService.saveAssistantMessage("user-1", 10L, 41L, "你好！", "test-model", 8))
                 .thenReturn(assistantMessage);
 
@@ -45,6 +49,7 @@ class ChatServiceTest {
 
         assertSame(userMessage, result.userMessage());
         assertSame(assistantMessage, result.assistantMessage());
+        assertEquals(List.of(), result.references());
         var order = inOrder(messageService, aiService);
         order.verify(aiService).validateQuestion("  你好  ");
         order.verify(messageService).saveUserMessage("user-1", 10L, "  你好  ");
@@ -64,22 +69,25 @@ class ChatServiceTest {
         var userMessage = new MessageResponse(41L, 10L, "user", question, 1L,
                 MessageStatus.COMPLETED, null, null, null, null);
         List<MessageResponse> history = List.of();
-        var snippets = List.of("演练日是每月 17 日。");
+        var documents = List.of(new Document("演练日是每月 17 日。", Map.of("source", "drill.md")));
+        var references = List.of(new KnowledgeReference("drill.md", null));
         when(messages.saveUserMessage("user-1", 10L, question)).thenReturn(userMessage);
         when(messages.getModelHistory("user-1", 10L, 1L, 15L)).thenReturn(history);
-        when(knowledge.searchReturnString(question)).thenReturn(snippets);
-        when(aiService.chat(history, question, snippets))
-                .thenReturn(new AiResponse("17 日", null, "test-model", "stop", null));
+        when(knowledge.search(question)).thenReturn(documents);
+        when(aiService.chat(history, question, documents))
+                .thenReturn(new AiService.ChatResult(new AiResponse("17 日", null, "test-model", "stop", null), references));
         var reply = new MessageResponse(42L, 10L, "assistant", "17 日", 2L,
                 MessageStatus.COMPLETED, "test-model", 0, null, null);
         when(messages.saveAssistantMessage("user-1", 10L, 41L, "17 日", "test-model", 0))
                 .thenReturn(reply);
 
-        assertSame(reply, service.sendMessage(new SendMessageRequest("user-1", 10L, question)).assistantMessage());
+        var result = service.sendMessage(new SendMessageRequest("user-1", 10L, question));
+        assertSame(reply, result.assistantMessage());
+        assertEquals(references, result.references());
 
         var order = inOrder(knowledge, aiService);
-        order.verify(knowledge).searchReturnString(question);
-        order.verify(aiService).chat(history, question, snippets);
+        order.verify(knowledge).search(question);
+        order.verify(aiService).chat(history, question, documents);
     }
 
     @Test

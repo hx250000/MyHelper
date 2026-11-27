@@ -28,7 +28,7 @@ import java.util.regex.Pattern;
 public class KnowledgeService {
     private static final Logger log = LoggerFactory.getLogger(KnowledgeService.class);
     private static final long MAX_DOCUMENT_BYTES = 4L * 1024 * 1024;
-    private static final String SOURCE_METADATA = "source";
+    static final String SOURCE_METADATA = "source";
 
     private final VectorStore vectorStore;
 
@@ -143,16 +143,6 @@ public class KnowledgeService {
                 .build();
         List<Document> searchRes=vectorStore.similaritySearch(request);
         return searchRes;
-    }
-
-    public List<String> searchReturnString(String query){
-        List<Document> searchResDocument = search(query);
-        List<String> searchResString = new ArrayList<>();
-        for(Document doc : searchResDocument){
-            String knowledgeContent = doc.getFormattedContent();
-            searchResString.add(knowledgeContent);
-        }
-        return searchResString;
     }
 
     public synchronized DebugSnapshot getAllDocuments() {

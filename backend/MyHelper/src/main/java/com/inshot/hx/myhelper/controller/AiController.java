@@ -25,7 +25,7 @@ public class AiController {
     @PostMapping(value = "/chat/nomemory", consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
     public ApiResponse<AiResponse> chat(@RequestBody AiRequest request) {
-        return ApiResponse.success(aiService.chat_no_history(request.message()));
+        return ApiResponse.success(aiService.chatWithoutHistory(request.message()));
     }
 
 }

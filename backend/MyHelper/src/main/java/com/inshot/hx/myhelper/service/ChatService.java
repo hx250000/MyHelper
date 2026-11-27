@@ -6,6 +6,7 @@ import com.inshot.hx.myhelper.dto.request.SendMessageRequest;
 import com.inshot.hx.myhelper.dto.response.MessageResponse;
 import com.inshot.hx.myhelper.dto.response.SendMessageResponse;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.ai.document.Document;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -62,17 +63,18 @@ public class ChatService {
             //提取用户输入信息、对话历史并发送给AI并接收回复
             MessageResponse userMessage = messageService.saveUserMessage(userId, conversationId, userContent);
             List<MessageResponse> conversationHistory=messageService.getModelHistory(userId,conversationId, userMessage.sequence(), MAXROUND);
-            List<String> knowledgeSearched = knowledgeService.map(service -> {
-                var results = service.searchReturnString(userMessage.content());
+            List<Document> knowledgeSearched = knowledgeService.map(service -> {
+                var results = service.search(userMessage.content());
                 log.info("对话{}已完成知识库检索，检索到{}条相关知识", conversationId, results.size());
                 return results;
             }).orElseGet(List::of);
-            var aiResponse = aiService.chat(conversationHistory, userContent, knowledgeSearched);
+            var chatResult = aiService.chat(conversationHistory, userContent, knowledgeSearched);
+            var aiResponse = chatResult.response();
             var assistantMessage = messageService.saveAssistantMessage(userId,
                     conversationId, userMessage.id(), aiResponse.reply(), aiResponse.model(),
                     aiResponse.usage() == null ? 0 : aiResponse.usage().completionTokens());
-            log.info("对话{}已完成AI回复，回复内容{}",conversationId,assistantMessage.content());
-            return new SendMessageResponse(userMessage, assistantMessage);
+            log.info("对话{}已完成AI回复，回复ID={}", conversationId, assistantMessage.id());
+            return new SendMessageResponse(userMessage, assistantMessage, chatResult.references());
         }
         //try成功与否都会执行，从忙列表中清除当前对话
         finally {

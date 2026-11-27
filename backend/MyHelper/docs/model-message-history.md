@@ -47,6 +47,16 @@ Service 排除空白内容后取最近 `maxRounds` 轮，再恢复为提问升�
 - 从最新历史往前按完整问答占用预算，第一轮放不下就停止，不跨越它拼接更旧的轮次。
 - 选中的历史按时间顺序放入请求；历史都放不下时只发本次问题。裁剪不影响数据库和页面历史。
 
+## Token 用量日志
+
+后端控制台搜索 `chat_token_usage`（`INFO`）。正式聊天和 `/api/ai/chat/nomemory` 共用该日志；
+每次实际模型调用记录一条，调用前被拦截的请求不算。日志只记录状态、模型、耗时和计数，不记录问题、历史、参考资料或回复正文。
+
+- `promptTokens`、`completionTokens`、`totalTokens` 是模型响应提供的用量，未提供时记为 `null`。本日志不改变消息表的 `token_count` 口径。
+- `estimatedQuestionTokens`、`estimatedHistoryTokens`、`estimatedKnowledgeTokens` 相加等于 `estimatedInputTokens`。历史只计实际发送的消息；知识库部分包含模板、来源标记和分隔符，是拼入资料后相对原问题的增量。
+- `candidateHistoryMessages` 和 `selectedHistoryMessages` 分别是裁剪前、实际发送的历史消息数；`retrievedChunks` 和 `includedChunks` 分别是命中、实际拼入的片段数。
+- `status` 为 `success`、`invalid_response` 或 `upstream_error`。无有效回复但上游返回了用量时仍会记录。此日志不包含 embedding 开销。
+
 ## 当前边界
 
 - 不改变 `/api/chat/send` 和 `/api/messages/history` 的响应结构或前端展示顺序。
@@ -59,7 +69,7 @@ Service 排除空白内容后取最近 `maxRounds` 轮，再恢复为提问升�
 在 `backend/MyHelper` 下运行：
 
 ```bash
-sh ./mvnw -Dtest=ChatServiceTest,ModelMessageHistoryTest,MessageHistoryTest,MessagePersistenceTest,AiChatIntegrationTest test
+sh ./mvnw -Dtest=AiTokenLoggingTest,ChatServiceTest,ModelMessageHistoryTest,MessageHistoryTest,MessagePersistenceTest,AiChatIntegrationTest test
 ```
 
 测试使用 H2 和本地模拟模型，覆盖交错写入、独占截止、会话隔离、空白和未完成轮次、

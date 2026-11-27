@@ -15,7 +15,7 @@ public class ChatContextBudget {
 
     //估算每条消息固定开销约为4个token
     private static final int PER_MESSAGE_OVERHEAD = 4;
-    public final int maxInputTokens;
+    private final int maxInputTokens;
 
     private final JTokkitTokenCountEstimator estimator = new JTokkitTokenCountEstimator();
 
@@ -34,13 +34,14 @@ public class ChatContextBudget {
         return tokens;
     }
 
-        /** 按时间顺序由老到新截取历史对话记录 */
-    public List<Message> fitHistory(List<Message> history, int questionTokens) {
+    /** 保留预算内最近的完整问答，返回顺序由老到新。 */
+    public HistorySelection fitHistory(List<Message> history, int currentMessageTokens) {
         if (history.size() % 2 != 0) {
             throw new IllegalArgumentException("模型历史必须由完整问答组成");
         }
 
-        int remaining = maxInputTokens - questionTokens;
+        int initialBudget = remainAfter(currentMessageTokens);
+        int remaining = initialBudget;
         int start = history.size();
         while (start >= 2) {
             int turnTokens = estimateMessage(history.get(start - 2).getText())
@@ -51,13 +52,16 @@ public class ChatContextBudget {
             remaining -= turnTokens;
             start -= 2;
         }
-        return history.subList(start, history.size());
+        return new HistorySelection(history.subList(start, history.size()), initialBudget - remaining);
+    }
+
+    public record HistorySelection(List<Message> messages, int estimatedTokens) {
     }
 
     public int estimateMessage(String content) {
         return estimator.estimate(content) + PER_MESSAGE_OVERHEAD;
     }
-    
+
     public int remainAfter(int token) {
         return maxInputTokens - token;
     }
