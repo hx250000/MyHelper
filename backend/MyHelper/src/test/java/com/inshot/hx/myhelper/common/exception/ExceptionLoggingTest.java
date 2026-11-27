@@ -184,7 +184,7 @@ class ExceptionLoggingTest {
     @Test
     void chatLogsInvalidIdAndConcurrentSendAndStillReleasesBusyState() {
         var messages = mock(MessageService.class);
-        var service = new ChatService(messages, mock(AiService.class));
+        var service = new ChatService(messages, mock(AiService.class), Optional.empty());
         assertLogged(BusinessException.class, () -> service.sendMessage(new SendMessageRequest("user-1", 0L, "hi")),
                 ChatService.class, Level.WARN, "会话 ID 必须为正整数", "conversationId=0");
         var request = new SendMessageRequest("user-1", 10L, "hi");

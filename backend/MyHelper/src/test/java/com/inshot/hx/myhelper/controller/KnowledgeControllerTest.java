@@ -1,6 +1,7 @@
 package com.inshot.hx.myhelper.controller;
 
 import com.inshot.hx.myhelper.common.exception.GlobalExceptionHandler;
+import com.inshot.hx.myhelper.dto.response.IndexResult;
 import com.inshot.hx.myhelper.tools.InspectableSimpleVectorStore;
 import com.inshot.hx.myhelper.service.KnowledgeService;
 import org.junit.jupiter.api.BeforeEach;
@@ -40,7 +41,7 @@ class KnowledgeControllerTest {
     void uploadsMarkdownAndReturnsIndexedChunkCount() throws Exception {
         var file = new MockMultipartFile("file", "guide.md", "text/markdown", "# Setup".getBytes());
         when(knowledgeService.indexMarkdown(org.mockito.ArgumentMatchers.any()))
-                .thenReturn(new KnowledgeService.IndexResult("guide.md", 1));
+                .thenReturn(new IndexResult("guide.md", 1));
 
         mvc.perform(multipart("/api/knowledge/documents").file(file)
                         .accept(MediaType.APPLICATION_JSON))

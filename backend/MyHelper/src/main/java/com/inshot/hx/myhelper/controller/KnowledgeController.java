@@ -3,6 +3,8 @@ package com.inshot.hx.myhelper.controller;
 import com.inshot.hx.myhelper.common.api.ApiResponse;
 import com.inshot.hx.myhelper.common.api.ResultCode;
 import com.inshot.hx.myhelper.common.exception.BusinessException;
+import com.inshot.hx.myhelper.dto.response.DebugSnapshot;
+import com.inshot.hx.myhelper.dto.response.IndexResult;
 import com.inshot.hx.myhelper.service.KnowledgeService;
 import org.springframework.ai.document.Document;
 import org.springframework.beans.factory.annotation.Value;
@@ -30,7 +32,7 @@ public class KnowledgeController {
 
     @PostMapping(value = "/documents", consumes = MediaType.MULTIPART_FORM_DATA_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
-    public ApiResponse<KnowledgeService.IndexResult> uploadMarkdown(
+    public ApiResponse<IndexResult> uploadMarkdown(
             @RequestParam("file") MultipartFile file) {
         return ApiResponse.success(knowledgeService.indexMarkdown(file));
     }
@@ -41,7 +43,7 @@ public class KnowledgeController {
     }
 
     @GetMapping("/debug")
-    public ApiResponse<KnowledgeService.DebugSnapshot> debug() {
+    public ApiResponse<DebugSnapshot> debug() {
         if (!debugEnabled) {
             throw new BusinessException(ResultCode.NOT_FOUND, "知识库调试接口未开启");
         }

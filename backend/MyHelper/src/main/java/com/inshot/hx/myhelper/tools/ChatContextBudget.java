@@ -15,8 +15,8 @@ public class ChatContextBudget {
 
     //估算每条消息固定开销约为4个token
     private static final int PER_MESSAGE_OVERHEAD = 4;
+    public final int maxInputTokens;
 
-    private final int maxInputTokens;
     private final JTokkitTokenCountEstimator estimator = new JTokkitTokenCountEstimator();
 
     public ChatContextBudget(@Value("${myhelper.chat.max-input-tokens}") int maxInputTokens) {
@@ -54,7 +54,11 @@ public class ChatContextBudget {
         return history.subList(start, history.size());
     }
 
-    private int estimateMessage(String content) {
+    public int estimateMessage(String content) {
         return estimator.estimate(content) + PER_MESSAGE_OVERHEAD;
+    }
+    
+    public int remainAfter(int token) {
+        return maxInputTokens - token;
     }
 }

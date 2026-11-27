@@ -3,12 +3,15 @@ package com.inshot.hx.myhelper.service;
 import com.inshot.hx.myhelper.common.api.ResultCode;
 import com.inshot.hx.myhelper.common.exception.BusinessException;
 import com.inshot.hx.myhelper.dto.request.SendMessageRequest;
+import com.inshot.hx.myhelper.dto.response.MessageResponse;
 import com.inshot.hx.myhelper.dto.response.SendMessageResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -18,14 +21,16 @@ public class ChatService {
 
     private final MessageService messageService;
     private final AiService aiService;
+    private final Optional<KnowledgeService> knowledgeService;
 
     private final long MAXROUND=15;
 
     private Set<Long> busyConversations = ConcurrentHashMap.newKeySet();
 
-    public ChatService(MessageService messageService, AiService aiService) {
+    public ChatService(MessageService messageService, AiService aiService, Optional<KnowledgeService> knowledgeService) {
         this.messageService = messageService;
         this.aiService = aiService;
+        this.knowledgeService = knowledgeService;
     }
 
     /** 单轮同步发送；数据库操作各自提交，模型调用期间不持有数据库事务。 */
@@ -55,9 +60,14 @@ public class ChatService {
             //校验输入以及估算token消耗
             aiService.validateQuestion(userContent);
             //提取用户输入信息、对话历史并发送给AI并接收回复
-            var userMessage = messageService.saveUserMessage(userId, conversationId, userContent);
-            var conversationHistory=messageService.getModelHistory(userId,conversationId, userMessage.sequence(), MAXROUND);
-            var aiResponse = aiService.chat(conversationHistory, userContent);
+            MessageResponse userMessage = messageService.saveUserMessage(userId, conversationId, userContent);
+            List<MessageResponse> conversationHistory=messageService.getModelHistory(userId,conversationId, userMessage.sequence(), MAXROUND);
+            List<String> knowledgeSearched = knowledgeService.map(service -> {
+                var results = service.searchReturnString(userMessage.content());
+                log.info("对话{}已完成知识库检索，检索到{}条相关知识", conversationId, results.size());
+                return results;
+            }).orElseGet(List::of);
+            var aiResponse = aiService.chat(conversationHistory, userContent, knowledgeSearched);
             var assistantMessage = messageService.saveAssistantMessage(userId,
                     conversationId, userMessage.id(), aiResponse.reply(), aiResponse.model(),
                     aiResponse.usage() == null ? 0 : aiResponse.usage().completionTokens());

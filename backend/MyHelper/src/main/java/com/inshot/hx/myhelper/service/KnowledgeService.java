@@ -2,13 +2,14 @@ package com.inshot.hx.myhelper.service;
 
 import com.inshot.hx.myhelper.common.api.ResultCode;
 import com.inshot.hx.myhelper.common.exception.BusinessException;
+import com.inshot.hx.myhelper.dto.response.DebugSnapshot;
+import com.inshot.hx.myhelper.dto.response.IndexResult;
 import com.inshot.hx.myhelper.tools.InspectableSimpleVectorStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.reader.TextReader;
 import org.springframework.ai.transformer.splitter.TextSplitter;
-import org.springframework.ai.transformer.splitter.TokenTextSplitter;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -144,6 +145,16 @@ public class KnowledgeService {
         return searchRes;
     }
 
+    public List<String> searchReturnString(String query){
+        List<Document> searchResDocument = search(query);
+        List<String> searchResString = new ArrayList<>();
+        for(Document doc : searchResDocument){
+            String knowledgeContent = doc.getFormattedContent();
+            searchResString.add(knowledgeContent);
+        }
+        return searchResString;
+    }
+
     public synchronized DebugSnapshot getAllDocuments() {
         if (!(vectorStore instanceof InspectableSimpleVectorStore store)) {
             throw new IllegalStateException("当前向量存储不支持直接查看内容");
@@ -151,9 +162,4 @@ public class KnowledgeService {
         return new DebugSnapshot(Map.copyOf(indexedIdsBySource), store.snapshot());
     }
 
-    public record DebugSnapshot(Map<String, List<String>> indexedIdsBySource, Map<String, ?> vectorStore) {
-    }
-
-    public record IndexResult(String source, int chunkCount) {
-    }
 }
